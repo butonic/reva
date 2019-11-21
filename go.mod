@@ -12,6 +12,7 @@ require (
 	github.com/fatih/color v1.7.0 // indirect
 	github.com/go-openapi/strfmt v0.19.2 // indirect
 	github.com/gofrs/uuid v3.2.0+incompatible
+	github.com/gogo/protobuf v1.2.0 // indirect
 	github.com/golang/protobuf v1.3.2
 	github.com/gomodule/redigo v2.0.0+incompatible
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.1-0.20190118093823-f849b5445de4
@@ -24,6 +25,7 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/pkg/xattr v0.4.1
 	github.com/pquerna/cachecontrol v0.0.0-20180517163645-1555304b9b35 // indirect
+	github.com/prometheus/client_golang v0.9.3-0.20190127221311-3c4408c8b829 // indirect
 	github.com/rs/cors v1.7.0
 	github.com/rs/zerolog v1.16.0
 	go.opencensus.io v0.22.1
@@ -38,3 +40,5 @@ require (
 )
 
 go 1.13
+
+replace github.com/cs3org/go-cs3apis => ../go-cs3apis
