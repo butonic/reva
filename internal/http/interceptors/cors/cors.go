@@ -97,6 +97,7 @@ func New(m map[string]interface{}) (global.Middleware, int, error) {
 			"Tus-Extension",
 			"Tus-Max-Size",
 			"Tus-Checksum-Algorithm",
+			"Location",
 			"Upload-Concat",
 			"Upload-Length",
 			"Upload-Metadata",
