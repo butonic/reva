@@ -109,6 +109,12 @@ func New(m map[string]interface{}) (global.Middleware, int, error) {
 		}
 	}
 
+	if len(conf.ExposedHeaders) == 0 {
+		conf.ExposedHeaders = []string{
+			"Location",
+		}
+	}
+
 	// TODO(jfd): use log from request context, otherwise fmt will be used to log,
 	// preventing us from pinging the log to eg jq
 	c := cors.New(cors.Options{
