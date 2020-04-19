@@ -328,6 +328,15 @@ func (fs *ocfs) getVersionsPath(ctx context.Context, np string) string {
 
 }
 
+func (fs *ocfs) getUploadPath(ctx context.Context, uploadID string) (string, error) {
+	u, ok := user.ContextGetUser(ctx)
+	if !ok {
+		err := errors.Wrap(errtypes.UserRequired("userrequired"), "error getting user from ctx")
+		return "", err
+	}
+	return path.Join(fs.c.DataDirectory, u.Username, "uploads", uploadID), nil
+}
+
 // ownloud stores trashed items in the files_trashbin subfolder of a users home
 func (fs *ocfs) getRecyclePath(ctx context.Context) (string, error) {
 	u, ok := user.ContextGetUser(ctx)
@@ -1240,50 +1249,9 @@ func (fs *ocfs) ListFolder(ctx context.Context, ref *provider.Reference) ([]*pro
 	return finfos, nil
 }
 
-func (fs *ocfs) Upload(ctx context.Context, ref *provider.Reference, r io.ReadCloser) error {
-	np, err := fs.resolve(ctx, ref)
-	if err != nil {
-		return errors.Wrap(err, "ocfs: error resolving reference")
-	}
-
-	// we cannot rely on /tmp as it can live in another partition and we can
-	// hit invalid cross-device link errors, so we create the tmp file in the same directory
-	// the file is supposed to be written.
-	tmp, err := ioutil.TempFile(path.Dir(np), "._reva_atomic_upload")
-	if err != nil {
-		return errors.Wrap(err, "ocfs: error creating tmp fn at "+path.Dir(np))
-	}
-	defer os.RemoveAll(tmp.Name())
-
-	_, err = io.Copy(tmp, r)
-	tmp.Close()
-	if err != nil {
-		return errors.Wrap(err, "ocfs: error writing to tmp file "+tmp.Name())
-	}
-
-	// if destination exists
-	if _, err := os.Stat(np); err == nil {
-		// copy attributes of existing file to tmp file
-		if err := fs.copyMD(np, tmp.Name()); err != nil {
-			return errors.Wrap(err, "ocfs: error copying metadata from "+np+" to "+tmp.Name())
-		}
-		// create revision
-		if err := fs.archiveRevision(ctx, np); err != nil {
-			return err
-		}
-	}
-
-	// TODO(jfd): make sure rename is atomic, missing fsync ...
-	if err := os.Rename(tmp.Name(), np); err != nil {
-		return errors.Wrap(err, "ocfs: error renaming from "+tmp.Name()+" to "+np)
-	}
-
-	return nil
-}
-
-func (fs *ocfs) archiveRevision(ctx context.Context, np string) error {
+func (fs *ocfs) archiveRevision(ctx context.Context, vbp string, np string) error {
 	// move existing file to versions dir
-	vp := fmt.Sprintf("%s.v%d", fs.getVersionsPath(ctx, np), time.Now().Unix())
+	vp := fmt.Sprintf("%s.v%d", vbp, time.Now().Unix())
 	if err := os.MkdirAll(path.Dir(vp), 0700); err != nil {
 		return errors.Wrap(err, "ocfs: error creating versions dir "+vp)
 	}
@@ -1403,7 +1371,7 @@ func (fs *ocfs) RestoreRevision(ctx context.Context, ref *provider.Reference, re
 	defer source.Close()
 
 	// destination should be available, otherwise we could not have navigated to its revisions
-	if err := fs.archiveRevision(ctx, np); err != nil {
+	if err := fs.archiveRevision(ctx, fs.getVersionsPath(ctx, np), np); err != nil {
 		return err
 	}
 
@@ -1558,3 +1526,6 @@ func (fs *ocfs) RestoreRecycleItem(ctx context.Context, key string) error {
 	// TODO(jfd) restore versions
 	return nil
 }
+
+// TODO propagate etag and mtime or append event to history? propagate on disk ...
+// - but propagation is a separate task. only if upload was successful ...
