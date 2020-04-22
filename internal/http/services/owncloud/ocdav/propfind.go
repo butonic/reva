@@ -110,6 +110,11 @@ func (s *svc) handlePropfind(w http.ResponseWriter, r *http.Request, ns string) 
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	if info.Type == provider.ResourceType_RESOURCE_TYPE_CONTAINER {
+		w.Header().Set("Tus-Resumable", "1.0.0")
+		w.Header().Set("Tus-Version", "1.0.0")
+		w.Header().Set("Tus-Extension", "creation")
+	}
 	w.Header().Set("DAV", "1, 3, extended-mkcol")
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusMultiStatus)

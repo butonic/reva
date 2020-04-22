@@ -69,6 +69,7 @@ func (s *svc) handleHead(w http.ResponseWriter, r *http.Request, ns string) {
 	// all directories can be used to start a tus upload
 	if info.Type == provider.ResourceType_RESOURCE_TYPE_CONTAINER {
 		w.Header().Set("Tus-Resumable", "1.0.0")
+		w.Header().Set("Tus-Version", "1.0.0")
 		w.Header().Set("Tus-Extension", "creation")
 	}
 	w.WriteHeader(http.StatusOK)
