@@ -56,6 +56,8 @@ func (s *svc) handlePropfind(w http.ResponseWriter, r *http.Request, ns string) 
 	if depth == "" {
 		depth = "1"
 	}
+
+	log.Debug().Interface("request", r).Msg("PROPFIND")
 	// see https://tools.ietf.org/html/rfc4918#section-10.2
 	if depth != "0" && depth != "1" && depth != "infinity" {
 		log.Error().Msgf("invalid Depth header value %s", depth)

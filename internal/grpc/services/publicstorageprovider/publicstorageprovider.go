@@ -353,12 +353,13 @@ func (s *service) Stat(ctx context.Context, req *provider.StatRequest) (*provide
 		trace.StringAttribute("ref", req.Ref.String()),
 	)
 
+	// TODO: use translatePublicRefToCS3Ref
 	tkn, relativePath, err := s.unwrap(ctx, req.Ref)
 	if err != nil {
 		return nil, err
 	}
 
-	pathFromToken, err := s.pathFromToken(ctx, tkn)
+	originalPath, err := s.pathFromToken(ctx, tkn)
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +370,7 @@ func (s *service) Stat(ctx context.Context, req *provider.StatRequest) (*provide
 	statResponse, err = s.gateway.Stat(ctx, &provider.StatRequest{
 		Ref: &provider.Reference{
 			Spec: &provider.Reference_Path{
-				Path: path.Join("/", pathFromToken, relativePath),
+				Path: path.Join("/", originalPath, relativePath),
 			},
 		},
 	})
@@ -378,10 +379,12 @@ func (s *service) Stat(ctx context.Context, req *provider.StatRequest) (*provide
 			Status: status.NewInternal(ctx, err, "gateway: error calling Stat for ref:"+req.Ref.String()),
 		}, nil
 	}
+
+	// TODO: remove single file share handling
 	if statResponse.Status.Code == rpc.Code_CODE_INTERNAL {
 		// the shared resource is a file, return the original error
 		// or ovewrite statResponse
-		if statResponse, ok = s.isSharedFile(ctx, pathFromToken); !ok {
+		if statResponse, ok = s.isSharedFile(ctx, originalPath); !ok {
 			return nil, err
 		}
 	}

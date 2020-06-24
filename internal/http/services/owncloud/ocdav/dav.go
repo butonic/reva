@@ -20,11 +20,14 @@ package ocdav
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"path"
 
 	gatewayv1beta1 "github.com/cs3org/go-cs3apis/cs3/gateway/v1beta1"
+	rpc "github.com/cs3org/go-cs3apis/cs3/rpc/v1beta1"
 	rpcv1beta1 "github.com/cs3org/go-cs3apis/cs3/rpc/v1beta1"
+	provider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
 	"github.com/cs3org/reva/pkg/rgrpc/todo/pool"
 	"github.com/cs3org/reva/pkg/rhttp/router"
 	tokenpkg "github.com/cs3org/reva/pkg/token"
@@ -34,11 +37,12 @@ import (
 
 // DavHandler routes to the different sub handlers
 type DavHandler struct {
-	AvatarsHandler     *AvatarsHandler
-	FilesHandler       *WebDavHandler
-	MetaHandler        *MetaHandler
-	TrashbinHandler    *TrashbinHandler
-	PublicFilesHandler *WebDavHandler
+	AvatarsHandler      *AvatarsHandler
+	FilesHandler        *WebDavHandler
+	MetaHandler         *MetaHandler
+	TrashbinHandler     *TrashbinHandler
+	PublicFolderHandler *WebDavHandler
+	PublicFileHandler   *PublicFileHandler
 }
 
 func (h *DavHandler) init(c *Config) error {
@@ -56,8 +60,13 @@ func (h *DavHandler) init(c *Config) error {
 	}
 	h.TrashbinHandler = new(TrashbinHandler)
 
-	h.PublicFilesHandler = new(WebDavHandler)
-	if err := h.PublicFilesHandler.init("public"); err != nil { // jail public file r equests to /public/ prefix
+	h.PublicFolderHandler = new(WebDavHandler)
+	if err := h.PublicFolderHandler.init("public"); err != nil { // jail public file r equests to /public/ prefix
+		return err
+	}
+
+	h.PublicFileHandler = new(PublicFileHandler)
+	if err := h.PublicFileHandler.init("public"); err != nil { // jail public file r equests to /public/ prefix
 		return err
 	}
 
@@ -122,10 +131,46 @@ func (h *DavHandler) Handler(s *svc) http.Handler {
 			ctx = metadata.AppendToOutgoingContext(ctx, tokenpkg.TokenHeader, res.Token)
 
 			r = r.WithContext(ctx)
-			h.PublicFilesHandler.Handler(s).ServeHTTP(w, r)
+
+			statInfo, err := getTokenStatInfo(ctx, c, token)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if statInfo.Type != provider.ResourceType_RESOURCE_TYPE_CONTAINER {
+				ctx := context.WithValue(ctx, "tokenStatInfo", statInfo)
+				r = r.WithContext(ctx)
+				h.PublicFileHandler.Handler(s).ServeHTTP(w, r)
+			} else {
+				h.PublicFolderHandler.Handler(s).ServeHTTP(w, r)
+			}
 
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
+}
+
+func getTokenStatInfo(ctx context.Context, client gatewayv1beta1.GatewayAPIClient, token string) (*provider.ResourceInfo, error) {
+	ns := "/public"
+
+	fn := path.Join(ns, token)
+	ref := &provider.Reference{
+		Spec: &provider.Reference_Path{Path: fn},
+	}
+	req := &provider.StatRequest{Ref: ref}
+	res, err := client.Stat(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.Status.Code != rpc.Code_CODE_OK {
+		return nil, fmt.Errorf("Failed to stat, status code %d: %s", res.Status.Code, res.Status.Message)
+	}
+
+	if res.Info == nil {
+		return nil, fmt.Errorf("Failed to stat, info is nil")
+	}
+
+	return res.Info, nil
 }
