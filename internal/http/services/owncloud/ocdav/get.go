@@ -76,6 +76,14 @@ func (s *svc) handleGet(w http.ResponseWriter, r *http.Request, ns string) {
 		return
 	}
 
+	log.Debug().
+		Str("r.URL.Path", r.URL.Path).
+		Str("ns", ns).
+		Str("fn", fn).
+		Interface("info", info).
+		Msg("Webdav GET download")
+	//publiclySharedFile := (res.Info.Type == provider.ResourceType_RESOURCE_TYPE_FILE && strings.Contains(ctx.Value(ctxKeyBaseURI).(string), "public-files"))
+
 	dReq := &provider.InitiateFileDownloadRequest{
 		Ref: &provider.Reference{
 			Spec: &provider.Reference_Path{Path: fn},
