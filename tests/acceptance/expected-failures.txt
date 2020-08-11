@@ -188,6 +188,8 @@ apiShareManagementBasic/createShare.feature:247
 apiShareManagementBasic/createShare.feature:248
 apiShareManagementBasic/createShare.feature:272
 apiShareManagementBasic/createShare.feature:273
+apiShareManagementBasic/createShare.feature:380
+apiShareManagementBasic/createShare.feature:381
 apiShareManagementBasic/createShare.feature:468
 apiShareManagementBasic/createShare.feature:528
 apiShareManagementBasic/createShare.feature:529
