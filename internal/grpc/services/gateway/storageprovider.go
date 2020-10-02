@@ -1642,9 +1642,8 @@ func (s *svc) listSharesFolder(ctx context.Context) (*provider.ListContainerResp
 				continue
 			}
 		}
-
-		base := path.Base(ref.Path)
-		info.Path = path.Join(ref.GetPath(), base)
+		
+		info.Path = ref.GetPath()
 		lcr.Infos[i] = info
 	}
 
