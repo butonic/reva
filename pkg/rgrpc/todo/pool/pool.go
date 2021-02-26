@@ -19,9 +19,10 @@
 package pool
 
 import (
+	"fmt"
 	"sync"
 
-	"github.com/cs3org/reva/cmd/revad/runtime"
+	"github.com/cs3org/reva/pkg/registry"
 
 	appprovider "github.com/cs3org/go-cs3apis/cs3/app/provider/v1beta1"
 	appregistry "github.com/cs3org/go-cs3apis/cs3/app/registry/v1beta1"
@@ -174,7 +175,8 @@ func GetAuthRegistryServiceClient(endpoint string) (authregistry.RegistryAPIClie
 	defer authRegistries.m.Unlock()
 
 	// query the service registry for any service nodes registered
-	if services, err := runtime.Registry.GetService("com.owncloud.authregistry"); err == nil {
+	if services, err := registry.GlobalRegistry.GetService("com.owncloud.authregistry"); err == nil {
+		fmt.Printf("\n\nDUDE\n\n")
 		if len(services) > 0 {
 			// avoid using always the same. fix this
 			for i := range services {
@@ -202,18 +204,20 @@ func GetAuthRegistryServiceClient(endpoint string) (authregistry.RegistryAPIClie
 		}
 	}
 
-	if c, ok := authRegistries.conn[endpoint]; ok {
-		return c.(authregistry.RegistryAPIClient), nil
-	}
+	return nil, fmt.Errorf("you fucked up :(")
 
-	conn, err := NewConn(endpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	v := authregistry.NewRegistryAPIClient(conn)
-	authRegistries.conn[endpoint] = v
-	return v, nil
+	//if c, ok := authRegistries.conn[endpoint]; ok {
+	//	return c.(authregistry.RegistryAPIClient), nil
+	//}
+	//
+	//conn, err := NewConn(endpoint)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//v := authregistry.NewRegistryAPIClient(conn)
+	//authRegistries.conn[endpoint] = v
+	//return v, nil
 }
 
 // GetAuthProviderServiceClient returns a new AuthProviderServiceClient.

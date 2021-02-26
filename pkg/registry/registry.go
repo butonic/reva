@@ -28,6 +28,11 @@ type Registry interface {
 	GetService(string) ([]*Service, error)
 }
 
+var (
+	// Registry is a work in progress in-memory global registry.
+	GlobalRegistry Registry = New()
+)
+
 // registry implements the Registry interface.
 type registry struct {
 	// m protects async access to the services map.
