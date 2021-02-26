@@ -21,6 +21,8 @@ package pool
 import (
 	"sync"
 
+	"github.com/cs3org/reva/cmd/revad/runtime"
+
 	appprovider "github.com/cs3org/go-cs3apis/cs3/app/provider/v1beta1"
 	appregistry "github.com/cs3org/go-cs3apis/cs3/app/registry/v1beta1"
 	authprovider "github.com/cs3org/go-cs3apis/cs3/auth/provider/v1beta1"
@@ -170,6 +172,35 @@ func GetStorageProviderServiceClient(endpoint string) (storageprovider.ProviderA
 func GetAuthRegistryServiceClient(endpoint string) (authregistry.RegistryAPIClient, error) {
 	authRegistries.m.Lock()
 	defer authRegistries.m.Unlock()
+
+	// query the service registry for any service nodes registered
+	if services, err := runtime.Registry.GetService("com.owncloud.authregistry"); err == nil {
+		if len(services) > 0 {
+			// avoid using always the same. fix this
+			for i := range services {
+				for j := range services[i].Nodes {
+					nodeAddr := services[i].Nodes[j].Address
+					// if there is already a connection to this node, use it
+					if _, ok := authRegistries.conn[nodeAddr]; ok {
+						return authRegistries.conn[nodeAddr].(authregistry.RegistryAPIClient), nil
+					}
+
+					// if not, create a new connection to a grpc server / authregistry node
+					conn, err := NewConn(nodeAddr)
+					if err != nil {
+						return nil, err
+					}
+
+					v := authregistry.NewRegistryAPIClient(conn)
+
+					// memoize entry
+					authRegistries.conn[nodeAddr] = v
+
+					return v, nil
+				}
+			}
+		}
+	}
 
 	if c, ok := authRegistries.conn[endpoint]; ok {
 		return c.(authregistry.RegistryAPIClient), nil

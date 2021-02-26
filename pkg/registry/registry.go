@@ -25,7 +25,6 @@ type Registry interface {
 
 	// GetService retrieves a service and all of its nodes by service name. It returns []*Service because we can have
 	// multiple versions of the same service running alongside each others.
-	// TODO(refs) support filtering options.
 	GetService(string) ([]*Service, error)
 }
 

@@ -28,6 +28,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cs3org/reva/pkg/registry"
+
 	"contrib.go.opencensus.io/exporter/jaeger"
 	"github.com/cs3org/reva/cmd/revad/internal/grace"
 	"github.com/cs3org/reva/pkg/logger"
@@ -43,6 +45,11 @@ import (
 	"go.opencensus.io/trace"
 )
 
+var (
+	// Registry is a work in progress in-memory global registry.
+	Registry registry.Registry = registry.New()
+)
+
 // Run runs a reva server with the given config file and pid file.
 func Run(mainConf map[string]interface{}, pidFile, logLevel string) {
 	logConf := parseLogConfOrDie(mainConf["log"], logLevel)
@@ -55,6 +62,11 @@ func RunWithOptions(mainConf map[string]interface{}, pidFile string, opts ...Opt
 	options := newOptions(opts...)
 	parseSharedConfOrDie(mainConf["shared"])
 	coreConf := parseCoreConfOrDie(mainConf["core"])
+
+	// TODO: one can pass the options from the config file to registry.New() and initialize a registry based upon config files.
+	if options.Registry != nil {
+		Registry = options.Registry
+	}
 
 	run(mainConf, coreConf, options.Logger, pidFile)
 }
@@ -70,6 +82,9 @@ type coreConf struct {
 func run(mainConf map[string]interface{}, coreConf *coreConf, logger *zerolog.Logger, filename string) {
 	host, _ := os.Hostname()
 	logger.Info().Msgf("host info: %s", host)
+
+	// parse global registry config
+	// load services from config into global Registry
 
 	initTracing(coreConf, logger)
 	initCPUCount(coreConf, logger)
