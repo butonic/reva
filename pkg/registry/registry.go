@@ -3,6 +3,8 @@ package registry
 import (
 	"fmt"
 	"sync"
+
+	"github.com/mitchellh/mapstructure"
 )
 
 /*
@@ -32,6 +34,16 @@ var (
 	// Registry is a work in progress in-memory global registry.
 	GlobalRegistry Registry = New()
 )
+
+type config struct {
+	Services map[string][]*Service{}, `mapstructure:"services"`
+}
+
+func (c *config) init() {
+	if len(c.Services) == 0 {
+		c.Services = map[string][]*Service{}
+	}
+}
 
 // registry implements the Registry interface.
 type registry struct {
@@ -84,10 +96,24 @@ type Node struct {
 	Metadata map[string]string
 }
 
-func New() Registry {
+func parseConfig(m map[string]interface{}) (*config, error) {
+	c := &config{}
+	if err := mapstructure.Decode(m, c); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// New returns an implementation of the Registry interface.
+func New(m map[string]interface{}) (Registry, error) {
+	c, err := parseConfig(m)
+	if err != nil {
+		return nil, err
+	}
+	c.init()
 	return &registry{
 		services: map[string][]*Service{},
-	}
+	}, nil
 }
 
 func (n Node) String() string {

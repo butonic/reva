@@ -60,6 +60,12 @@ func RunWithOptions(mainConf map[string]interface{}, pidFile string, opts ...Opt
 	// TODO: one can pass the options from the config file to registry.New() and initialize a registry based upon config files.
 	if options.Registry != nil {
 		registry.GlobalRegistry = options.Registry
+	} else {
+
+		// TODO check if mainConf["registry"] is set
+		registry.GlobalRegistry, _ = registry.New(mainConf["registry"].(map[string]interface{}))
+		// TODO move New to run and dedicated initRegistry
+
 	}
 
 	run(mainConf, coreConf, options.Logger, pidFile)
@@ -77,9 +83,7 @@ func run(mainConf map[string]interface{}, coreConf *coreConf, logger *zerolog.Lo
 	host, _ := os.Hostname()
 	logger.Info().Msgf("host info: %s", host)
 
-	// parse global registry config
-	// load services from config into global Registry
-
+	//initRegistry()
 	initTracing(coreConf, logger)
 	initCPUCount(coreConf, logger)
 
