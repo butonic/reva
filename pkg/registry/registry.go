@@ -31,17 +31,17 @@ type Registry interface {
 }
 
 var (
-	// Registry is a work in progress in-memory global registry.
-	GlobalRegistry Registry = New()
+	// GlobalRegistry is a work in progress in-memory global registry.
+	GlobalRegistry Registry = &registry{}
 )
 
 type config struct {
-	Services map[string][]*Service{}, `mapstructure:"services"`
+	Services map[string]Service `mapstructure:"services"`
 }
 
 func (c *config) init() {
 	if len(c.Services) == 0 {
-		c.Services = map[string][]*Service{}
+		c.Services = map[string]Service{}
 	}
 }
 
@@ -79,21 +79,22 @@ func (r *registry) GetService(name string) ([]*Service, error) {
 
 // Service represents a running service with multiple nodes.
 type Service struct {
-	Name  string
-	Nodes []Node
+	Name  string `mapstructure:"name"`
+	Nodes []Node `mapstructure:"nodes"`
 }
 
+// Node represents a node for a service
 type Node struct {
-	// Id uniquely identifies the node.
-	Id string
+	// ID uniquely identifies the node.
+	ID string `mapstructure:"id"`
 
 	// Address where the given node is running.
-	Address string
+	Address string `mapstructure:"address"`
 
 	// metadata is used in order to differentiate services implementations. For instance an AuthProvider service could
 	// have multiple implementations, basic, bearer ..., metadata would be used to select the service type depending on
 	// its implementation.
-	Metadata map[string]string
+	Metadata map[string]string `mapstructure:"metadata"`
 }
 
 func parseConfig(m map[string]interface{}) (*config, error) {
@@ -112,10 +113,11 @@ func New(m map[string]interface{}) (Registry, error) {
 	}
 	c.init()
 	return &registry{
+		// TODO use parsed config? or iterate over existing services
 		services: map[string][]*Service{},
 	}, nil
 }
 
 func (n Node) String() string {
-	return fmt.Sprintf("%v-%v", n.Id, n.Address)
+	return fmt.Sprintf("%v-%v", n.ID, n.Address)
 }

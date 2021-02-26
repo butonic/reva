@@ -62,9 +62,16 @@ func RunWithOptions(mainConf map[string]interface{}, pidFile string, opts ...Opt
 		registry.GlobalRegistry = options.Registry
 	} else {
 
-		// TODO check if mainConf["registry"] is set
-		registry.GlobalRegistry, _ = registry.New(mainConf["registry"].(map[string]interface{}))
+		if _, ok := mainConf["registry"]; ok {
+			registry.GlobalRegistry, _ = registry.New(mainConf["registry"].(map[string]interface{}))
+		}
 		// TODO move New to run and dedicated initRegistry
+		// TODO what if it was not initialized? iterate over existing http and grpc services?
+		// [grpc] and [http] both have an `address` property and iterate the services as [grpc.service.<servicename>]
+		// but the address is the listen address
+		// services like the gateway have host:port config for services
+		// micro uses an Address   option as the host:port to bind to and
+		//            an Advertise option as the host:port to use in the registry, if it is not set it will use the Address
 
 	}
 
