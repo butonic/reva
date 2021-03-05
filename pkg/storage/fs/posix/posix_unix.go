@@ -16,20 +16,27 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-package loader
+// +build !windows
+
+package posix
 
 import (
-	// Load core storage filesystem backends.
-	_ "github.com/cs3org/reva/pkg/storage/fs/eos"
-	_ "github.com/cs3org/reva/pkg/storage/fs/eosgrpc"
-	_ "github.com/cs3org/reva/pkg/storage/fs/eosgrpchome"
-	_ "github.com/cs3org/reva/pkg/storage/fs/eoshome"
-	_ "github.com/cs3org/reva/pkg/storage/fs/local"
-	_ "github.com/cs3org/reva/pkg/storage/fs/localhome"
-	_ "github.com/cs3org/reva/pkg/storage/fs/ocis"
-	_ "github.com/cs3org/reva/pkg/storage/fs/owncloud"
-	_ "github.com/cs3org/reva/pkg/storage/fs/posix"
-	_ "github.com/cs3org/reva/pkg/storage/fs/s3"
-	_ "github.com/cs3org/reva/pkg/storage/fs/s3ng"
-	// Add your own here
+	"context"
+	"syscall"
 )
+
+func (fs *posixfs) GetQuota(ctx context.Context) (uint64, uint64, error) {
+	node, err := fs.lu.HomeOrRootNode(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	stat := syscall.Statfs_t{}
+	err = syscall.Statfs(node.InternalPath(), &stat)
+	if err != nil {
+		return 0, 0, err
+	}
+	total := stat.Blocks * uint64(stat.Bsize)                // Total data blocks in filesystem
+	used := (stat.Blocks - stat.Bavail) * uint64(stat.Bsize) // Free blocks available to unprivileged user
+	return total, used, nil
+}

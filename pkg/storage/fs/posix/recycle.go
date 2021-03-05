@@ -16,20 +16,28 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-package loader
+package posix
 
 import (
-	// Load core storage filesystem backends.
-	_ "github.com/cs3org/reva/pkg/storage/fs/eos"
-	_ "github.com/cs3org/reva/pkg/storage/fs/eosgrpc"
-	_ "github.com/cs3org/reva/pkg/storage/fs/eosgrpchome"
-	_ "github.com/cs3org/reva/pkg/storage/fs/eoshome"
-	_ "github.com/cs3org/reva/pkg/storage/fs/local"
-	_ "github.com/cs3org/reva/pkg/storage/fs/localhome"
-	_ "github.com/cs3org/reva/pkg/storage/fs/ocis"
-	_ "github.com/cs3org/reva/pkg/storage/fs/owncloud"
-	_ "github.com/cs3org/reva/pkg/storage/fs/posix"
-	_ "github.com/cs3org/reva/pkg/storage/fs/s3"
-	_ "github.com/cs3org/reva/pkg/storage/fs/s3ng"
-	// Add your own here
+	"context"
+
+	provider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
+	"github.com/cs3org/reva/pkg/errtypes"
 )
+
+func (fs *posixfs) ListRecycle(ctx context.Context) (items []*provider.RecycleItem, err error) {
+	return nil, errtypes.NotSupported("ListRecycle")
+}
+
+func (fs *posixfs) RestoreRecycleItem(ctx context.Context, key string) (err error) {
+	return errtypes.NotSupported("RestoreRecycleItem")
+
+}
+
+func (fs *posixfs) PurgeRecycleItem(ctx context.Context, key string) (err error) {
+	return errtypes.NotSupported("PurgeRecycleItem")
+}
+
+func (fs *posixfs) EmptyRecycle(ctx context.Context) error {
+	return errtypes.NotSupported("EmptyRecycle")
+}

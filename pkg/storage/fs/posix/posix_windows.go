@@ -16,20 +16,33 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-package loader
+// +build windows
+
+package posix
 
 import (
-	// Load core storage filesystem backends.
-	_ "github.com/cs3org/reva/pkg/storage/fs/eos"
-	_ "github.com/cs3org/reva/pkg/storage/fs/eosgrpc"
-	_ "github.com/cs3org/reva/pkg/storage/fs/eosgrpchome"
-	_ "github.com/cs3org/reva/pkg/storage/fs/eoshome"
-	_ "github.com/cs3org/reva/pkg/storage/fs/local"
-	_ "github.com/cs3org/reva/pkg/storage/fs/localhome"
-	_ "github.com/cs3org/reva/pkg/storage/fs/ocis"
-	_ "github.com/cs3org/reva/pkg/storage/fs/owncloud"
-	_ "github.com/cs3org/reva/pkg/storage/fs/posix"
-	_ "github.com/cs3org/reva/pkg/storage/fs/s3"
-	_ "github.com/cs3org/reva/pkg/storage/fs/s3ng"
-	// Add your own here
+	"context"
+
+	"golang.org/x/sys/windows"
 )
+
+func (fs *posixfs) GetQuota(ctx context.Context) (uint64, uint64, error) {
+	var free, total, avail uint64
+
+	node, err := fs.lu.HomeOrRootNode(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	pathPtr, err := windows.UTF16PtrFromString(node.InternalPath())
+	if err != nil {
+		return 0, 0, err
+	}
+	err = windows.GetDiskFreeSpaceEx(pathPtr, &avail, &total, &free)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	used := total - free
+	return total, used, nil
+}

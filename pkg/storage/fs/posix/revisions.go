@@ -16,20 +16,24 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-package loader
+package posix
 
 import (
-	// Load core storage filesystem backends.
-	_ "github.com/cs3org/reva/pkg/storage/fs/eos"
-	_ "github.com/cs3org/reva/pkg/storage/fs/eosgrpc"
-	_ "github.com/cs3org/reva/pkg/storage/fs/eosgrpchome"
-	_ "github.com/cs3org/reva/pkg/storage/fs/eoshome"
-	_ "github.com/cs3org/reva/pkg/storage/fs/local"
-	_ "github.com/cs3org/reva/pkg/storage/fs/localhome"
-	_ "github.com/cs3org/reva/pkg/storage/fs/ocis"
-	_ "github.com/cs3org/reva/pkg/storage/fs/owncloud"
-	_ "github.com/cs3org/reva/pkg/storage/fs/posix"
-	_ "github.com/cs3org/reva/pkg/storage/fs/s3"
-	_ "github.com/cs3org/reva/pkg/storage/fs/s3ng"
-	// Add your own here
+	"context"
+	"io"
+
+	provider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
+	"github.com/cs3org/reva/pkg/errtypes"
 )
+
+func (fs *posixfs) ListRevisions(ctx context.Context, ref *provider.Reference) (revisions []*provider.FileVersion, err error) {
+	return nil, errtypes.NotSupported("ListRevisions")
+}
+
+func (fs *posixfs) DownloadRevision(ctx context.Context, ref *provider.Reference, revisionKey string) (io.ReadCloser, error) {
+	return nil, errtypes.NotSupported("DownloadRevision")
+}
+
+func (fs *posixfs) RestoreRevision(ctx context.Context, ref *provider.Reference, revisionKey string) (err error) {
+	return errtypes.NotSupported("RestoreRevision")
+}
