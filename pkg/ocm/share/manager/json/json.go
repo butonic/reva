@@ -195,7 +195,7 @@ func getOCMEndpoint(originProvider *ocmprovider.ProviderInfo) (string, error) {
 	return "", errors.New("json: ocm endpoint not specified for mesh provider")
 }
 
-func (m *mgr) Share(ctx context.Context, md *provider.ResourceId, g *ocm.ShareGrant, name string,
+func (m *mgr) Share(ctx context.Context, md *provider.Reference, g *ocm.ShareGrant, name string,
 	pi *ocmprovider.ProviderInfo, pm string, owner *userpb.UserId, token string, st ocm.Share_ShareType) (*ocm.Share, error) {
 
 	id := genID()
@@ -242,9 +242,9 @@ func (m *mgr) Share(ctx context.Context, md *provider.ResourceId, g *ocm.ShareGr
 
 	// check if share already exists.
 	key := &ocm.ShareKey{
-		Owner:      userID,
-		ResourceId: md,
-		Grantee:    g.Grantee,
+		Owner:   userID,
+		Ref:     md,
+		Grantee: g.Grantee,
 	}
 	_, err := m.getByKey(ctx, key)
 
@@ -258,7 +258,7 @@ func (m *mgr) Share(ctx context.Context, md *provider.ResourceId, g *ocm.ShareGr
 			OpaqueId: id,
 		},
 		Name:        name,
-		ResourceId:  md,
+		Ref:         md,
 		Permissions: g.Permissions,
 		Grantee:     g.Grantee,
 		Owner:       userID,
@@ -308,7 +308,7 @@ func (m *mgr) Share(ctx context.Context, md *provider.ResourceId, g *ocm.ShareGr
 		requestBody := url.Values{
 			"shareWith":    {g.Grantee.GetUserId().OpaqueId},
 			"name":         {name},
-			"providerId":   {fmt.Sprintf("%s:%s", md.StorageId, md.OpaqueId)},
+			"providerId":   {fmt.Sprintf("%s:%s", md.StorageId, md.NodeId)}, // TODO @butonic REFERENCE providerId?
 			"owner":        {userID.OpaqueId},
 			"protocol":     {string(protocol)},
 			"meshProvider": {userID.Idp},
@@ -416,7 +416,7 @@ func (m *mgr) getByKey(ctx context.Context, key *ocm.ShareKey) (*ocm.Share, erro
 			continue
 		}
 		if (utils.UserEqual(key.Owner, share.Owner) || utils.UserEqual(key.Owner, share.Creator)) &&
-			utils.ResourceEqual(key.ResourceId, share.ResourceId) && utils.GranteeEqual(key.Grantee, share.Grantee) {
+			utils.ResourceEqual(key.Ref, share.Ref) && utils.GranteeEqual(key.Grantee, share.Grantee) {
 			return &share, nil
 		}
 	}
@@ -492,7 +492,7 @@ func sharesEqual(ref *ocm.ShareReference, s *ocm.Share) bool {
 		}
 	} else if ref.GetKey() != nil {
 		if (utils.UserEqual(ref.GetKey().Owner, s.Owner) || utils.UserEqual(ref.GetKey().Owner, s.Creator)) &&
-			utils.ResourceEqual(ref.GetKey().ResourceId, s.ResourceId) && utils.GranteeEqual(ref.GetKey().Grantee, s.Grantee) {
+			utils.ResourceEqual(ref.GetKey().Ref, s.Ref) && utils.GranteeEqual(ref.GetKey().Grantee, s.Grantee) {
 			return true
 		}
 	}
@@ -562,8 +562,8 @@ func (m *mgr) ListShares(ctx context.Context, filters []*ocm.ListOCMSharesReques
 				// check filters
 				// TODO(labkode): add the rest of filters.
 				for _, f := range filters {
-					if f.Type == ocm.ListOCMSharesRequest_Filter_TYPE_RESOURCE_ID {
-						if share.ResourceId.StorageId == f.GetResourceId().StorageId && share.ResourceId.OpaqueId == f.GetResourceId().OpaqueId {
+					if f.Type == ocm.ListOCMSharesRequest_Filter_TYPE_REFERENCE {
+						if utils.ResourceEqual(share.Ref, f.GetRef()) {
 							ss = append(ss, &share)
 						}
 					}

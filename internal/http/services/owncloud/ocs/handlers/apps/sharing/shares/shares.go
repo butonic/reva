@@ -52,6 +52,7 @@ import (
 	"github.com/cs3org/reva/pkg/rhttp/router"
 	"github.com/cs3org/reva/pkg/share/cache"
 	"github.com/cs3org/reva/pkg/share/cache/registry"
+	"github.com/cs3org/reva/pkg/utils"
 	"github.com/pkg/errors"
 )
 
@@ -217,11 +218,7 @@ func (h *Handler) createShare(w http.ResponseWriter, r *http.Request) {
 	fn := path.Join(h.homeNamespace, r.FormValue("path"))
 
 	statReq := provider.StatRequest{
-		Ref: &provider.Reference{
-			Spec: &provider.Reference_Path{
-				Path: fn,
-			},
-		},
+		Ref: &provider.Reference{Path: fn},
 	}
 
 	sublog := appctx.GetLogger(ctx).With().Str("path", fn).Logger()
@@ -334,7 +331,7 @@ type PublicShareContextName string
 
 func (h *Handler) getShare(w http.ResponseWriter, r *http.Request, shareID string) {
 	var share *conversions.ShareData
-	var resourceID *provider.ResourceId
+	var resourceID *provider.Reference
 	ctx := r.Context()
 	logger := appctx.GetLogger(r.Context())
 	logger.Debug().Str("shareID", shareID).Msg("get share by id")
@@ -374,7 +371,7 @@ func (h *Handler) getShare(w http.ResponseWriter, r *http.Request, shareID strin
 
 	if err == nil && psRes.GetShare() != nil {
 		share = conversions.PublicShare2ShareData(psRes.Share, r, h.publicURL)
-		resourceID = psRes.Share.ResourceId
+		resourceID = psRes.Share.Ref
 	}
 
 	if share == nil {
@@ -407,7 +404,7 @@ func (h *Handler) getShare(w http.ResponseWriter, r *http.Request, shareID strin
 		*/
 
 		if err == nil && uRes.GetShare() != nil {
-			resourceID = uRes.Share.ResourceId
+			resourceID = uRes.Share.Ref
 			share, err = conversions.CS3Share2ShareData(ctx, uRes.Share)
 			if err != nil {
 				response.WriteOCSError(w, r, response.MetaServerError.StatusCode, "error mapping share data", err)
@@ -509,13 +506,7 @@ func (h *Handler) updateShare(w http.ResponseWriter, r *http.Request, shareID st
 		return
 	}
 
-	statReq := provider.StatRequest{
-		Ref: &provider.Reference{
-			Spec: &provider.Reference_Id{
-				Id: uRes.Share.ResourceId,
-			},
-		},
-	}
+	statReq := provider.StatRequest{Ref: uRes.Share.Ref}
 
 	statRes, err := client.Stat(r.Context(), &statReq)
 	if err != nil {
@@ -625,8 +616,7 @@ func (h *Handler) listSharesWithMe(w http.ResponseWriter, r *http.Request) {
 		var info *provider.ResourceInfo
 		if pinfo != nil {
 			// check if the shared resource matches the path resource
-			if rs.Share.ResourceId.StorageId != pinfo.GetId().StorageId ||
-				rs.Share.ResourceId.OpaqueId != pinfo.GetId().OpaqueId {
+			if !utils.ResourceEqual(rs.Share.Ref, pinfo.Id) {
 				// try next share
 				continue
 			}
@@ -634,7 +624,7 @@ func (h *Handler) listSharesWithMe(w http.ResponseWriter, r *http.Request) {
 			info = pinfo
 		} else {
 			var status *rpc.Status
-			info, status, err = h.getResourceInfoByID(ctx, client, rs.Share.ResourceId)
+			info, status, err = h.getResourceInfoByID(ctx, client, rs.Share.Ref)
 			if err != nil || status.Code != rpc.Code_CODE_OK {
 				h.logProblems(status, err, "could not stat, skipping")
 				continue
@@ -756,24 +746,24 @@ func (h *Handler) addFilters(w http.ResponseWriter, r *http.Request, prefix stri
 	}
 
 	collaborationFilters = append(collaborationFilters, &collaboration.ListSharesRequest_Filter{
-		Type: collaboration.ListSharesRequest_Filter_TYPE_RESOURCE_ID,
-		Term: &collaboration.ListSharesRequest_Filter_ResourceId{
-			ResourceId: info.Id,
+		Type: collaboration.ListSharesRequest_Filter_TYPE_REFERENCE,
+		Term: &collaboration.ListSharesRequest_Filter_Ref{
+			Ref: info.Id,
 		},
 	})
 
 	linkFilters = append(linkFilters, &link.ListPublicSharesRequest_Filter{
-		Type: link.ListPublicSharesRequest_Filter_TYPE_RESOURCE_ID,
-		Term: &link.ListPublicSharesRequest_Filter_ResourceId{
-			ResourceId: info.Id,
+		Type: link.ListPublicSharesRequest_Filter_TYPE_REFERENCE,
+		Term: &link.ListPublicSharesRequest_Filter_Ref{
+			Ref: info.Id,
 		},
 	})
 
 	return collaborationFilters, linkFilters, nil
 }
 
-func wrapResourceID(r *provider.ResourceId) string {
-	return wrap(r.StorageId, r.OpaqueId)
+func wrapResourceID(r *provider.Reference) string {
+	return wrap(r.StorageId, r.NodeId)
 }
 
 // The fileID must be encoded
@@ -795,7 +785,7 @@ func (h *Handler) addFileInfo(ctx context.Context, s *conversions.ShareData, inf
 		}
 		s.MimeType = parsedMt
 		// TODO STime:     &types.Timestamp{Seconds: info.Mtime.Seconds, Nanos: info.Mtime.Nanos},
-		s.StorageID = info.Id.StorageId
+		s.StorageID = info.Id.StorageId + info.Id.NodeId
 		// TODO Storage: int
 		s.ItemSource = wrapResourceID(info.Id)
 		s.FileSource = s.ItemSource
@@ -943,18 +933,12 @@ func (h *Handler) getAdditionalInfoAttribute(ctx context.Context, u *userIdentif
 
 func (h *Handler) getResourceInfoByPath(ctx context.Context, client gateway.GatewayAPIClient, path string) (*provider.ResourceInfo, *rpc.Status, error) {
 	return h.getResourceInfo(ctx, client, path, &provider.Reference{
-		Spec: &provider.Reference_Path{
-			Path: path,
-		},
+		Path: path,
 	})
 }
 
-func (h *Handler) getResourceInfoByID(ctx context.Context, client gateway.GatewayAPIClient, id *provider.ResourceId) (*provider.ResourceInfo, *rpc.Status, error) {
-	return h.getResourceInfo(ctx, client, wrapResourceID(id), &provider.Reference{
-		Spec: &provider.Reference_Id{
-			Id: id,
-		},
-	})
+func (h *Handler) getResourceInfoByID(ctx context.Context, client gateway.GatewayAPIClient, id *provider.Reference) (*provider.ResourceInfo, *rpc.Status, error) {
+	return h.getResourceInfo(ctx, client, wrapResourceID(id), id)
 }
 
 // getResourceInfo retrieves the resource info to a target.

@@ -153,7 +153,7 @@ func (h *Handler) listUserShares(r *http.Request, filters []*collaboration.ListS
 				continue
 			}
 
-			info, status, err := h.getResourceInfoByID(ctx, client, s.ResourceId)
+			info, status, err := h.getResourceInfoByID(ctx, client, s.Ref)
 			if err != nil || status.Code != rpc.Code_CODE_OK {
 				log.Debug().Interface("share", s).Interface("status", status).Interface("shareData", data).Err(err).Msg("could not stat share, skipping")
 				continue

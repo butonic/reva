@@ -52,19 +52,19 @@ func shareListCommand() *command {
 		shareRequest := &collaboration.ListSharesRequest{}
 		if *resID != "" {
 			// check split by colon (:)
-			tokens := strings.Split(*resID, ":")
+			tokens := strings.Split(*resID, ":") // TODO fuuuuuck should use ! which is ugly on cli because it needs escaping ... RAAHHHHH
 			if len(tokens) != 2 {
 				return fmt.Errorf("resource id invalid")
 			}
-			id := &provider.ResourceId{
+			ref := &provider.Reference{
 				StorageId: tokens[0],
-				OpaqueId:  tokens[1],
+				NodeId:    tokens[1],
 			}
 			shareRequest.Filters = []*collaboration.ListSharesRequest_Filter{
 				&collaboration.ListSharesRequest_Filter{
-					Type: collaboration.ListSharesRequest_Filter_TYPE_RESOURCE_ID,
-					Term: &collaboration.ListSharesRequest_Filter_ResourceId{
-						ResourceId: id,
+					Type: collaboration.ListSharesRequest_Filter_TYPE_REFERENCE,
+					Term: &collaboration.ListSharesRequest_Filter_Ref{
+						Ref: ref,
 					},
 				},
 			}
@@ -82,7 +82,7 @@ func shareListCommand() *command {
 		if len(w) == 0 {
 			t := table.NewWriter()
 			t.SetOutputMirror(os.Stdout)
-			t.AppendHeader(table.Row{"#", "Owner.Idp", "Owner.OpaqueId", "ResourceId", "Permissions", "Type",
+			t.AppendHeader(table.Row{"#", "Owner.Idp", "Owner.OpaqueId", "Reference", "Permissions", "Type",
 				"Grantee.Idp", "Grantee.OpaqueId", "Created", "Updated"})
 
 			for _, s := range shareRes.Shares {
@@ -93,7 +93,7 @@ func shareListCommand() *command {
 					idp, opaque = s.Grantee.GetGroupId().Idp, s.Grantee.GetGroupId().OpaqueId
 				}
 				t.AppendRows([]table.Row{
-					{s.Id.OpaqueId, s.Owner.Idp, s.Owner.OpaqueId, s.ResourceId.String(), s.Permissions.String(),
+					{s.Id.OpaqueId, s.Owner.Idp, s.Owner.OpaqueId, s.Ref.String(), s.Permissions.String(),
 						s.Grantee.Type.String(), idp, opaque,
 						time.Unix(int64(s.Ctime.Seconds), 0), time.Unix(int64(s.Mtime.Seconds), 0)},
 				})

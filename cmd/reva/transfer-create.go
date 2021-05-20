@@ -79,9 +79,7 @@ func transferCreateCommand() *command {
 		// verify resource stats
 		statReq := &provider.StatRequest{
 			Ref: &provider.Reference{
-				Spec: &provider.Reference_Path{
-					Path: fn,
-				},
+				Path: fn,
 			},
 		}
 		statRes, err := client.Stat(ctx, statReq)
@@ -126,7 +124,7 @@ func transferCreateCommand() *command {
 					},
 				},
 			},
-			ResourceId: statRes.Info.Id,
+			Ref: statRes.Info.Id,
 			Grant: &ocm.ShareGrant{
 				Grantee: &provider.Grantee{
 					Type: gt,
@@ -155,11 +153,11 @@ func transferCreateCommand() *command {
 
 		t := table.NewWriter()
 		t.SetOutputMirror(os.Stdout)
-		t.AppendHeader(table.Row{"#", "Owner.Idp", "Owner.OpaqueId", "ResourceId", "Permissions", "Type", "Grantee.Idp", "Grantee.OpaqueId", "ShareType", "Created", "Updated"})
+		t.AppendHeader(table.Row{"#", "Owner.Idp", "Owner.OpaqueId", "Reference", "Permissions", "Type", "Grantee.Idp", "Grantee.OpaqueId", "ShareType", "Created", "Updated"})
 
 		s := createShareResponse.Share
 		t.AppendRows([]table.Row{
-			{s.Id.OpaqueId, s.Owner.Idp, s.Owner.OpaqueId, s.ResourceId.String(), s.Permissions.String(),
+			{s.Id.OpaqueId, s.Owner.Idp, s.Owner.OpaqueId, s.Ref.String(), s.Permissions.String(),
 				s.Grantee.Type.String(), s.Grantee.GetUserId().Idp, s.Grantee.GetUserId().OpaqueId, s.ShareType.String(),
 				time.Unix(int64(s.Ctime.Seconds), 0), time.Unix(int64(s.Mtime.Seconds), 0)},
 		})

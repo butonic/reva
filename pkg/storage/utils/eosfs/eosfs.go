@@ -290,27 +290,28 @@ func (fs *eosfs) unwrapInternal(ctx context.Context, ns, np, layout string) (str
 
 // resolve takes in a request path or request id and returns the unwrappedNominal path.
 func (fs *eosfs) resolve(ctx context.Context, u *userpb.User, ref *provider.Reference) (string, error) {
-	if ref.GetPath() != "" {
-		return ref.GetPath(), nil
-	}
 
-	if ref.GetId() != nil {
-		p, err := fs.getPath(ctx, u, ref.GetId())
+	if ref.StorageId != "" || ref.NodeId != "" {
+		p, err := fs.getPath(ctx, u, ref)
 		if err != nil {
 			return "", err
 		}
-
+		p = path.Join(p, ref.Path)
 		return p, nil
+	}
+	if ref.Path != "" {
+		return ref.Path, nil
 	}
 
 	// reference is invalid
 	return "", fmt.Errorf("invalid reference %+v. id and path are missing", ref)
 }
 
-func (fs *eosfs) getPath(ctx context.Context, u *userpb.User, id *provider.ResourceId) (string, error) {
-	fid, err := strconv.ParseUint(id.OpaqueId, 10, 64)
+func (fs *eosfs) getPath(ctx context.Context, u *userpb.User, id *provider.Reference) (string, error) {
+	// FIXME @butonic REFERENCE take into account storageid here!
+	fid, err := strconv.ParseUint(id.NodeId, 10, 64)
 	if err != nil {
-		return "", fmt.Errorf("error converting string to int for eos fileid: %s", id.OpaqueId)
+		return "", fmt.Errorf("error converting string to int for eos fileid: %s", id.NodeId)
 	}
 
 	uid, gid, err := fs.getUserUIDAndGID(ctx, u)
@@ -340,14 +341,15 @@ func (fs *eosfs) isShareFolderChild(ctx context.Context, p string) bool {
 	return len(vals) > 1 && vals[1] != ""
 }
 
-func (fs *eosfs) GetPathByID(ctx context.Context, id *provider.ResourceId) (string, error) {
+func (fs *eosfs) GetPathByID(ctx context.Context, id *provider.Reference) (string, error) {
 	u, err := getUser(ctx)
 	if err != nil {
 		return "", errors.Wrap(err, "eos: no user in ctx")
 	}
 
 	// parts[0] = 868317, parts[1] = photos, ...
-	parts := strings.Split(id.OpaqueId, "/")
+	// FIXME @butonic REFERENCE ... umm ... 868317/photos? @ishank011 HELP?!?
+	parts := strings.Split(id.NodeId, "/")
 	fileID, err := strconv.ParseUint(parts[0], 10, 64)
 	if err != nil {
 		return "", errors.Wrap(err, "eos: error parsing fileid string")
@@ -1289,7 +1291,7 @@ func (fs *eosfs) ListRecycle(ctx context.Context) ([]*provider.RecycleItem, erro
 	return recycleEntries, nil
 }
 
-func (fs *eosfs) RestoreRecycleItem(ctx context.Context, key, restorePath string) error {
+func (fs *eosfs) RestoreRecycleItem(ctx context.Context, key string, restoreRef *provider.Reference) error {
 	u, err := getUser(ctx)
 	if err != nil {
 		return errors.Wrap(err, "eos: no user in ctx")
@@ -1309,7 +1311,7 @@ func (fs *eosfs) convertToRecycleItem(ctx context.Context, eosDeletedItem *eoscl
 		return nil, err
 	}
 	recycleItem := &provider.RecycleItem{
-		Path:         path,
+		Ref:          &provider.Reference{Path: path},
 		Key:          eosDeletedItem.RestoreKey,
 		Size:         eosDeletedItem.Size,
 		DeletionTime: &types.Timestamp{Seconds: eosDeletedItem.DeletionMTime},
@@ -1453,7 +1455,10 @@ func (fs *eosfs) convert(ctx context.Context, eosFileInfo *eosclient.FileInfo, v
 	}
 
 	info := &provider.ResourceInfo{
-		Id:            &provider.ResourceId{OpaqueId: fmt.Sprintf("%d", eosFileInfo.Inode)},
+		Id: &provider.Reference{
+			// FIXME @butonic REFERENCE also return StorageId
+			NodeId: fmt.Sprintf("%d", eosFileInfo.Inode),
+		},
 		Path:          path,
 		Owner:         owner,
 		Etag:          fmt.Sprintf("\"%s\"", strings.Trim(eosFileInfo.ETag, "\"")),
@@ -1619,7 +1624,7 @@ func (fs *eosfs) getEosMetadata(finfo *eosclient.FileInfo) []byte {
 	No RestoreRecycleItem(ctx context.Context, key string) error
 	No PurgeRecycleItem(ctx context.Context, key string) error
 	No EmptyRecycle(ctx context.Context) error
-	? GetPathByID(ctx context.Context, id *provider.ResourceId) (string, error)
+	? GetPathByID(ctx context.Context, id *provider.Reference) (string, error)
 	No AddGrant(ctx context.Context, ref *provider.Reference, g *provider.Grant) error
 	No RemoveGrant(ctx context.Context, ref *provider.Reference, g *provider.Grant) error
 	No UpdateGrant(ctx context.Context, ref *provider.Reference, g *provider.Grant) error
@@ -1650,7 +1655,7 @@ func (fs *eosfs) getEosMetadata(finfo *eosclient.FileInfo) []byte {
 	No RestoreRecycleItem(ctx context.Context, key string) error
 	No PurgeRecycleItem(ctx context.Context, key string) error
 	No EmptyRecycle(ctx context.Context) error
-	?  GetPathByID(ctx context.Context, id *provider.ResourceId) (string, error)
+	?  GetPathByID(ctx context.Context, id *provider.Reference) (string, error)
 	No AddGrant(ctx context.Context, ref *provider.Reference, g *provider.Grant) error
 	No RemoveGrant(ctx context.Context, ref *provider.Reference, g *provider.Grant) error
 	No UpdateGrant(ctx context.Context, ref *provider.Reference, g *provider.Grant) error
@@ -1681,7 +1686,7 @@ func (fs *eosfs) getEosMetadata(finfo *eosclient.FileInfo) []byte {
 	No RestoreRecycleItem(ctx context.Context, key string) error
 	No PurgeRecycleItem(ctx context.Context, key string) error
 	No EmptyRecycle(ctx context.Context) error
-	?  GetPathByID(ctx context.Context, id *provider.ResourceId) (string, error)
+	?  GetPathByID(ctx context.Context, id *provider.Reference) (string, error)
 	No AddGrant(ctx context.Context, ref *provider.Reference, g *provider.Grant) error
 	No RemoveGrant(ctx context.Context, ref *provider.Reference, g *provider.Grant) error
 	No UpdateGrant(ctx context.Context, ref *provider.Reference, g *provider.Grant) error

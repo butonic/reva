@@ -127,12 +127,8 @@ func (m *manager) GetResourceInfos() ([]*provider.ResourceInfo, error) {
 		})
 
 		inf, err := eos.GetMD(ctx, &provider.Reference{
-			Spec: &provider.Reference_Id{
-				Id: &provider.ResourceId{
-					StorageId: storageID,
-					OpaqueId:  opaqueID,
-				},
-			},
+			StorageId: storageID,
+			NodeId:    opaqueID,
 		}, []string{})
 		if err != nil {
 			return nil, err

@@ -89,7 +89,7 @@ func (h *Handler) createFederatedCloudShare(w http.ResponseWriter, r *http.Reque
 				},
 			},
 		},
-		ResourceId: statInfo.Id,
+		Ref: statInfo.Id,
 		Grant: &ocm.ShareGrant{
 			Grantee: &provider.Grantee{
 				Type: provider.GranteeType_GRANTEE_TYPE_USER,

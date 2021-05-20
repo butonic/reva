@@ -380,7 +380,7 @@ func (s *service) InitiateFileUpload(ctx context.Context, req *provider.Initiate
 
 func (s *service) GetPath(ctx context.Context, req *provider.GetPathRequest) (*provider.GetPathResponse, error) {
 	// TODO(labkode): check that the storage ID is the same as the storage provider id.
-	fn, err := s.storage.GetPathByID(ctx, req.ResourceId)
+	fn, err := s.storage.GetPathByID(ctx, req.Ref)
 	if err != nil {
 		return &provider.GetPathResponse{
 			Status: status.NewInternal(ctx, err, "error getting path by id"),
@@ -389,7 +389,8 @@ func (s *service) GetPath(ctx context.Context, req *provider.GetPathRequest) (*p
 
 	fn = path.Join(s.mountPath, path.Clean(fn))
 	res := &provider.GetPathResponse{
-		Path:   fn,
+		// FIXME @butonic REFERENCE return StorageId, NodeId and relative path if request contains ids?
+		Ref:    &provider.Reference{Path: fn},
 		Status: status.NewOK(ctx),
 	}
 	return res, nil
@@ -400,7 +401,8 @@ func (s *service) GetHome(ctx context.Context, req *provider.GetHomeRequest) (*p
 
 	res := &provider.GetHomeResponse{
 		Status: status.NewOK(ctx),
-		Path:   home,
+		// FIXME @butonic REFERENCE return StorageId, NodeId and relative path if request contains ids
+		Ref: &provider.Reference{Path: home}, //  FIXME @butonic REFERENCE this is a configured mount path ... why
 	}
 
 	return res, nil
@@ -816,7 +818,7 @@ func (s *service) ListRecycle(ctx context.Context, req *provider.ListRecycleRequ
 
 func (s *service) RestoreRecycleItem(ctx context.Context, req *provider.RestoreRecycleItemRequest) (*provider.RestoreRecycleItemResponse, error) {
 	// TODO(labkode): CRITICAL: fill recycle info with storage provider.
-	if err := s.storage.RestoreRecycleItem(ctx, req.Key, req.RestorePath); err != nil {
+	if err := s.storage.RestoreRecycleItem(ctx, req.Key, req.RestoreRef); err != nil {
 		var st *rpc.Status
 		switch err.(type) {
 		case errtypes.IsNotFound:
@@ -839,8 +841,8 @@ func (s *service) RestoreRecycleItem(ctx context.Context, req *provider.RestoreR
 
 func (s *service) PurgeRecycle(ctx context.Context, req *provider.PurgeRecycleRequest) (*provider.PurgeRecycleResponse, error) {
 	// if a key was sent as opacque id purge only that item
-	if req.GetRef().GetId() != nil && req.GetRef().GetId().GetOpaqueId() != "" {
-		if err := s.storage.PurgeRecycleItem(ctx, req.GetRef().GetId().GetOpaqueId()); err != nil {
+	if req.GetRef() != nil && req.GetRef().NodeId != "" {
+		if err := s.storage.PurgeRecycleItem(ctx, req.GetRef().NodeId); err != nil {
 			var st *rpc.Status
 			switch err.(type) {
 			case errtypes.IsNotFound:
@@ -1028,13 +1030,7 @@ func (s *service) CreateReference(ctx context.Context, req *provider.CreateRefer
 		}, nil
 	}
 
-	ref := &provider.Reference{
-		Spec: &provider.Reference_Path{
-			Path: req.Path,
-		},
-	}
-
-	newRef, err := s.unwrap(ctx, ref)
+	newRef, err := s.unwrap(ctx, req.Ref)
 	if err != nil {
 		return &provider.CreateReferenceResponse{
 			Status: status.NewInternal(ctx, err, "error unwrapping path"),
@@ -1101,17 +1097,8 @@ func getFS(c *config) (storage.FS, error) {
 }
 
 func (s *service) unwrap(ctx context.Context, ref *provider.Reference) (*provider.Reference, error) {
-	if ref.GetId() != nil {
-		idRef := &provider.Reference{
-			Spec: &provider.Reference_Id{
-				Id: &provider.ResourceId{
-					StorageId: "", // we are unwrapping on purpose, bottom layers only need OpaqueId.
-					OpaqueId:  ref.GetId().OpaqueId,
-				},
-			},
-		}
-
-		return idRef, nil
+	if ref.StorageId != "" {
+		return ref, nil
 	}
 
 	if ref.GetPath() == "" {
@@ -1120,16 +1107,12 @@ func (s *service) unwrap(ctx context.Context, ref *provider.Reference) (*provide
 	}
 
 	fn := ref.GetPath()
-	fsfn, err := s.trimMountPrefix(fn)
+	fsfn, err := s.trimMountPrefix(fn) // FIXME @butonic REFERENCE nooooo the provider should not know where it is mounted
 	if err != nil {
 		return nil, err
 	}
 
-	pathRef := &provider.Reference{
-		Spec: &provider.Reference_Path{
-			Path: fsfn,
-		},
-	}
+	pathRef := &provider.Reference{Path: fsfn}
 
 	return pathRef, nil
 }
@@ -1146,6 +1129,6 @@ func (s *service) wrap(ctx context.Context, ri *provider.ResourceInfo) error {
 		// For wrapper drivers, the storage ID might already be set. In that case, skip setting it
 		ri.Id.StorageId = s.mountID
 	}
-	ri.Path = path.Join(s.mountPath, ri.Path)
+	ri.Path = path.Join(s.mountPath, ri.Path) // FIXME @butonic REFERENCE nooooo the provider should not know where it is mounted
 	return nil
 }

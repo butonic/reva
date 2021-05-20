@@ -42,17 +42,17 @@ func (h *VersionsHandler) init(c *Config) error {
 // Handler handles requests
 // versions can be listed with a PROPFIND to /remote.php/dav/meta/<fileid>/v
 // a version is identified by a timestamp, eg. /remote.php/dav/meta/<fileid>/v/1561410426
-func (h *VersionsHandler) Handler(s *svc, rid *provider.ResourceId) http.Handler {
+func (h *VersionsHandler) Handler(s *svc, ref *provider.Reference) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		if rid == (*provider.ResourceId)(nil) {
+		if ref == nil {
 			http.Error(w, "404 Not Found", http.StatusNotFound)
 			return
 		}
 
 		// baseURI is encoded as part of the response payload in href field
-		baseURI := path.Join(ctx.Value(ctxKeyBaseURI).(string), wrapResourceID(rid))
+		baseURI := path.Join(ctx.Value(ctxKeyBaseURI).(string), wrapResourceID(ref))
 		ctx = context.WithValue(ctx, ctxKeyBaseURI, baseURI)
 		r = r.WithContext(ctx)
 
@@ -63,14 +63,14 @@ func (h *VersionsHandler) Handler(s *svc, rid *provider.ResourceId) http.Handler
 			return
 		}
 		if key == "" && r.Method == "PROPFIND" {
-			h.doListVersions(w, r, s, rid)
+			h.doListVersions(w, r, s, ref)
 			return
 		}
 		if key != "" && r.Method == "COPY" {
 			// TODO(jfd) it seems we cannot directly GET version content with cs3 ...
 			// TODO(jfd) cs3api has no delete file version call
 			// TODO(jfd) restore version to given Destination, but cs3api has no destination
-			h.doRestore(w, r, s, rid, key)
+			h.doRestore(w, r, s, ref, key)
 			return
 		}
 
@@ -78,12 +78,12 @@ func (h *VersionsHandler) Handler(s *svc, rid *provider.ResourceId) http.Handler
 	})
 }
 
-func (h *VersionsHandler) doListVersions(w http.ResponseWriter, r *http.Request, s *svc, rid *provider.ResourceId) {
+func (h *VersionsHandler) doListVersions(w http.ResponseWriter, r *http.Request, s *svc, ref *provider.Reference) {
 	ctx := r.Context()
 	ctx, span := trace.StartSpan(ctx, "listVersions")
 	defer span.End()
 
-	sublog := appctx.GetLogger(ctx).With().Interface("resourceid", rid).Logger()
+	sublog := appctx.GetLogger(ctx).With().Interface("reference", ref).Logger()
 
 	pf, status, err := readPropfind(r.Body)
 	if err != nil {
@@ -99,9 +99,6 @@ func (h *VersionsHandler) doListVersions(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	ref := &provider.Reference{
-		Spec: &provider.Reference_Id{Id: rid},
-	}
 	req := &provider.StatRequest{Ref: ref}
 	res, err := client.Stat(ctx, req)
 	if err != nil {
@@ -142,9 +139,9 @@ func (h *VersionsHandler) doListVersions(w http.ResponseWriter, r *http.Request,
 			// TODO(jfd) we cannot access version content, this will be a problem when trying to fetch version thumbnails
 			// Opaque
 			Type: provider.ResourceType_RESOURCE_TYPE_FILE,
-			Id: &provider.ResourceId{
+			Id: &provider.Reference{
 				StorageId: "versions", // this is a virtual storage
-				OpaqueId:  info.Id.OpaqueId + "@" + versions[i].GetKey(),
+				NodeId:    info.Id.NodeId + "@" + versions[i].GetKey(),
 			},
 			// Checksum
 			Etag: versions[i].Etag,
@@ -178,12 +175,12 @@ func (h *VersionsHandler) doListVersions(w http.ResponseWriter, r *http.Request,
 
 }
 
-func (h *VersionsHandler) doRestore(w http.ResponseWriter, r *http.Request, s *svc, rid *provider.ResourceId, key string) {
+func (h *VersionsHandler) doRestore(w http.ResponseWriter, r *http.Request, s *svc, ref *provider.Reference, key string) {
 	ctx := r.Context()
 	ctx, span := trace.StartSpan(ctx, "restore")
 	defer span.End()
 
-	sublog := appctx.GetLogger(ctx).With().Interface("resourceid", rid).Str("key", key).Logger()
+	sublog := appctx.GetLogger(ctx).With().Interface("reference", ref).Str("key", key).Logger()
 
 	client, err := s.getClient()
 	if err != nil {
@@ -193,9 +190,7 @@ func (h *VersionsHandler) doRestore(w http.ResponseWriter, r *http.Request, s *s
 	}
 
 	req := &provider.RestoreFileVersionRequest{
-		Ref: &provider.Reference{
-			Spec: &provider.Reference_Id{Id: rid},
-		},
+		Ref: ref,
 		Key: key,
 	}
 

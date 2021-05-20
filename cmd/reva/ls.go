@@ -51,9 +51,7 @@ func lsCommand() *command {
 			return err
 		}
 
-		ref := &provider.Reference{
-			Spec: &provider.Reference_Path{Path: fn},
-		}
+		ref := &provider.Reference{Path: fn}
 		req := &provider.ListContainerRequest{Ref: ref}
 
 		ctx := getAuthContext()
@@ -70,7 +68,7 @@ func lsCommand() *command {
 		for _, info := range infos {
 			p := info.Path
 			if !*fullFlag {
-				p = path.Base(info.Path)
+				p = path.Base(p)
 			}
 			if len(w) == 0 {
 				if *longFlag {

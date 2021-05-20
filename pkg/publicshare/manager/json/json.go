@@ -174,7 +174,7 @@ func (m *manager) CreatePublicShare(ctx context.Context, u *user.User, rInfo *pr
 		Id:                id,
 		Owner:             rInfo.GetOwner(),
 		Creator:           u.Id,
-		ResourceId:        rInfo.Id,
+		Ref:               rInfo.Id,
 		Token:             tkn,
 		Permissions:       g.Permissions,
 		Ctime:             createdAt,
@@ -378,8 +378,8 @@ func (m *manager) ListPublicShares(ctx context.Context, u *user.User, filters []
 			shares = append(shares, &local.PublicShare)
 		} else {
 			for i := range filters {
-				if filters[i].Type == link.ListPublicSharesRequest_Filter_TYPE_RESOURCE_ID {
-					if local.ResourceId.StorageId == filters[i].GetResourceId().StorageId && local.ResourceId.OpaqueId == filters[i].GetResourceId().OpaqueId {
+				if filters[i].Type == link.ListPublicSharesRequest_Filter_TYPE_REFERENCE {
+					if utils.ResourceEqual(local.Ref, filters[i].GetRef()) {
 						if notExpired(&local.PublicShare) {
 							shares = append(shares, &local.PublicShare)
 						} else if err := m.revokeExpiredPublicShare(ctx, &local.PublicShare, u); err != nil {

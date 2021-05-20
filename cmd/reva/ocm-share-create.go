@@ -87,9 +87,7 @@ func ocmShareCreateCommand() *command {
 			return formatError(remoteUserRes.Status)
 		}
 
-		ref := &provider.Reference{
-			Spec: &provider.Reference_Path{Path: fn},
-		}
+		ref := &provider.Reference{Path: fn}
 		req := &provider.StatRequest{Ref: ref}
 		res, err := client.Stat(ctx, req)
 		if err != nil {
@@ -126,14 +124,14 @@ func ocmShareCreateCommand() *command {
 				},
 				"name": &types.OpaqueEntry{
 					Decoder: "plain",
-					Value:   []byte(res.Info.Path),
+					Value:   []byte(res.Info.Path), // TODO what reference should be used here?
 				},
 			},
 		}
 
 		shareRequest := &ocm.CreateOCMShareRequest{
 			Opaque:                opaqueObj,
-			ResourceId:            res.Info.Id,
+			Ref:                   res.Info.Id,
 			Grant:                 grant,
 			RecipientMeshProvider: providerInfo.ProviderInfo,
 		}
@@ -149,11 +147,11 @@ func ocmShareCreateCommand() *command {
 
 		t := table.NewWriter()
 		t.SetOutputMirror(os.Stdout)
-		t.AppendHeader(table.Row{"#", "Owner.Idp", "Owner.OpaqueId", "ResourceId", "Permissions", "Type", "Grantee.Idp", "Grantee.OpaqueId", "Created", "Updated"})
+		t.AppendHeader(table.Row{"#", "Owner.Idp", "Owner.OpaqueId", "Reference", "Permissions", "Type", "Grantee.Idp", "Grantee.OpaqueId", "Created", "Updated"})
 
 		s := shareRes.Share
 		t.AppendRows([]table.Row{
-			{s.Id.OpaqueId, s.Owner.Idp, s.Owner.OpaqueId, s.ResourceId.String(), s.Permissions.String(),
+			{s.Id.OpaqueId, s.Owner.Idp, s.Owner.OpaqueId, s.Ref.String(), s.Permissions.String(),
 				s.Grantee.Type.String(), s.Grantee.GetUserId().Idp, s.Grantee.GetUserId().OpaqueId,
 				time.Unix(int64(s.Ctime.Seconds), 0), time.Unix(int64(s.Mtime.Seconds), 0)},
 		})

@@ -134,7 +134,7 @@ func (m *manager) CreatePublicShare(ctx context.Context, u *user.User, rInfo *pr
 	permissions := conversions.SharePermToInt(g.Permissions.Permissions)
 	itemType := conversions.ResourceTypeToItem(rInfo.Type)
 	prefix := rInfo.Id.StorageId
-	itemSource := rInfo.Id.OpaqueId
+	itemSource := rInfo.Id.NodeId
 	fileSource, err := strconv.ParseUint(itemSource, 10, 64)
 	if err != nil {
 		// it can be the case that the item source may be a character string
@@ -183,7 +183,7 @@ func (m *manager) CreatePublicShare(ctx context.Context, u *user.User, rInfo *pr
 		},
 		Owner:             rInfo.GetOwner(),
 		Creator:           u.Id,
-		ResourceId:        rInfo.Id,
+		Ref:               rInfo.Id,
 		Token:             tkn,
 		Permissions:       g.Permissions,
 		Ctime:             createdAt,
@@ -313,12 +313,12 @@ func (m *manager) ListPublicShares(ctx context.Context, u *user.User, filters []
 
 	for i, f := range filters {
 		switch f.Type {
-		case link.ListPublicSharesRequest_Filter_TYPE_RESOURCE_ID:
+		case link.ListPublicSharesRequest_Filter_TYPE_REFERENCE:
 			filterQuery += "(fileid_prefix=? AND item_source=?)"
 			if i != len(filters)-1 {
 				filterQuery += " AND "
 			}
-			params = append(params, f.GetResourceId().StorageId, f.GetResourceId().OpaqueId)
+			params = append(params, f.GetRef().StorageId, f.GetRef().NodeId)
 		case link.ListPublicSharesRequest_Filter_TYPE_OWNER:
 			filterQuery += "(uid_owner=?)"
 			if i != len(filters)-1 {

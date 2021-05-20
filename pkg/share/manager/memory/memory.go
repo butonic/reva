@@ -82,9 +82,9 @@ func (m *manager) Share(ctx context.Context, md *provider.ResourceInfo, g *colla
 
 	// check if share already exists.
 	key := &collaboration.ShareKey{
-		Owner:      md.Owner,
-		ResourceId: md.Id,
-		Grantee:    g.Grantee,
+		Owner:   md.Owner,
+		Ref:     md.Id,
+		Grantee: g.Grantee,
 	}
 	_, err := m.getByKey(ctx, key)
 	// share already exists
@@ -96,7 +96,7 @@ func (m *manager) Share(ctx context.Context, md *provider.ResourceInfo, g *colla
 		Id: &collaboration.ShareId{
 			OpaqueId: fmt.Sprintf("%d", id),
 		},
-		ResourceId:  md.Id,
+		Ref:         md.Id,
 		Permissions: g.Permissions,
 		Grantee:     g.Grantee,
 		Owner:       md.Owner,
@@ -125,7 +125,7 @@ func (m *manager) getByKey(ctx context.Context, key *collaboration.ShareKey) (*c
 	defer m.lock.Unlock()
 	for _, s := range m.shares {
 		if (utils.UserEqual(key.Owner, s.Owner) || utils.UserEqual(key.Owner, s.Creator)) &&
-			utils.ResourceEqual(key.ResourceId, s.ResourceId) && utils.GranteeEqual(key.Grantee, s.Grantee) {
+			utils.ResourceEqual(key.Ref, s.Ref) && utils.GranteeEqual(key.Grantee, s.Grantee) {
 			return s, nil
 		}
 	}
@@ -188,7 +188,7 @@ func sharesEqual(ref *collaboration.ShareReference, s *collaboration.Share) bool
 		}
 	} else if ref.GetKey() != nil {
 		if (utils.UserEqual(ref.GetKey().Owner, s.Owner) || utils.UserEqual(ref.GetKey().Owner, s.Creator)) &&
-			utils.ResourceEqual(ref.GetKey().ResourceId, s.ResourceId) && utils.GranteeEqual(ref.GetKey().Grantee, s.Grantee) {
+			utils.ResourceEqual(ref.GetKey().Ref, s.Ref) && utils.GranteeEqual(ref.GetKey().Grantee, s.Grantee) {
 			return true
 		}
 	}
@@ -229,8 +229,8 @@ func (m *manager) ListShares(ctx context.Context, filters []*collaboration.ListS
 				// check filters
 				// TODO(labkode): add the rest of filters.
 				for _, f := range filters {
-					if f.Type == collaboration.ListSharesRequest_Filter_TYPE_RESOURCE_ID {
-						if utils.ResourceEqual(s.ResourceId, f.GetResourceId()) {
+					if f.Type == collaboration.ListSharesRequest_Filter_TYPE_REFERENCE {
+						if utils.ResourceEqual(s.Ref, f.GetRef()) {
 							ss = append(ss, s)
 						}
 					}

@@ -63,10 +63,7 @@ func shareCreateCommand() *command {
 			return err
 		}
 
-		ref := &provider.Reference{
-			Spec: &provider.Reference_Path{Path: fn},
-		}
-
+		ref := &provider.Reference{Path: fn}
 		req := &provider.StatRequest{Ref: ref}
 		res, err := client.Stat(ctx, req)
 		if err != nil {
@@ -123,7 +120,7 @@ func shareCreateCommand() *command {
 
 		t := table.NewWriter()
 		t.SetOutputMirror(os.Stdout)
-		t.AppendHeader(table.Row{"#", "Owner.Idp", "Owner.OpaqueId", "ResourceId", "Permissions", "Type", "Grantee.Idp", "Grantee.OpaqueId", "Created", "Updated"})
+		t.AppendHeader(table.Row{"#", "Owner.Idp", "Owner.OpaqueId", "Reference", "Permissions", "Type", "Grantee.Idp", "Grantee.OpaqueId", "Created", "Updated"})
 
 		s := shareRes.Share
 		var idp, opaque string
@@ -133,7 +130,7 @@ func shareCreateCommand() *command {
 			idp, opaque = s.Grantee.GetGroupId().Idp, s.Grantee.GetGroupId().OpaqueId
 		}
 		t.AppendRows([]table.Row{
-			{s.Id.OpaqueId, s.Owner.Idp, s.Owner.OpaqueId, s.ResourceId.String(), s.Permissions.String(),
+			{s.Id.OpaqueId, s.Owner.Idp, s.Owner.OpaqueId, s.Ref.String(), s.Permissions.String(),
 				s.Grantee.Type.String(), idp, opaque,
 				time.Unix(int64(s.Ctime.Seconds), 0), time.Unix(int64(s.Mtime.Seconds), 0)},
 		})

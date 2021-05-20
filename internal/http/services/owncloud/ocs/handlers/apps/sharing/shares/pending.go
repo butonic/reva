@@ -82,7 +82,7 @@ func (h *Handler) updateReceivedShare(w http.ResponseWriter, r *http.Request, sh
 
 	rs := shareRes.GetShare()
 
-	info, status, err := h.getResourceInfoByID(ctx, client, rs.Share.ResourceId)
+	info, status, err := h.getResourceInfoByID(ctx, client, rs.Share.Ref)
 	if err != nil || status.Code != rpc.Code_CODE_OK {
 		h.logProblems(status, err, "could not stat, skipping")
 	}
@@ -101,7 +101,17 @@ func (h *Handler) updateReceivedShare(w http.ResponseWriter, r *http.Request, sh
 
 	if data.State == ocsStateAccepted {
 		// Needed because received shares can be jailed in a folder in the users home
-		data.FileTarget = path.Join(h.sharePrefix, path.Base(info.Path))
+		// FIXME @butonic REFERENCE these would use the /dav/spaces endpoint with a storageid,nodeid and a relative path
+		// what do we need to do to get absolute paths from the gateway?
+		// send references with the path only set?
+		// The registry would route them to the closest matching path
+		// The storage provider would else see a reference that only has the path set?
+		// So it would have to resolve the storage based on the path, which is driver specific
+		// And it could return an absolute path ... and no id set in the 'Path' of the Ref property of ResourceInfos
+		// But if a request DOES use an id, the Ref contains the same id? at least in the Ref part of the ResouceInfo
+		// In the Id of a Resoucre info the storageid and node id are always set.
+		// so ... if info.Ref.StorageId != "" -> use /dav/spaces path, otherwise use path and append it to webdav endpoint
+		data.FileTarget = path.Join(h.sharePrefix, path.Base(info.Path)) // FIXME @butonic REFERENCES use same "wrong" path!!!!
 		data.Path = path.Join(h.sharePrefix, path.Base(info.Path))
 	}
 

@@ -444,15 +444,16 @@ func (n *Node) AsResourceInfo(ctx context.Context, rp *provider.ResourcePermissi
 		// nodeType = provider.ResourceType_RESOURCE_TYPE_REFERENCE
 	}
 
-	id := &provider.ResourceId{OpaqueId: n.ID}
-
 	fn, err = n.lu.Path(ctx, n)
 	if err != nil {
 		return nil, err
 	}
 
 	ri = &provider.ResourceInfo{
-		Id:            id,
+		Id: &provider.Reference{
+			// FIXME @butonic REFERENCE add storage id
+			NodeId: n.ID,
+		},
 		Path:          fn,
 		Type:          nodeType,
 		MimeType:      mime.Detect(nodeType == provider.ResourceType_RESOURCE_TYPE_CONTAINER, fn),

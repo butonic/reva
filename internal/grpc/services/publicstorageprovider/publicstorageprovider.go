@@ -148,9 +148,7 @@ func (s *service) translatePublicRefToCS3Ref(ctx context.Context, ref *provider.
 		return nil, "", nil, st, nil
 	}
 
-	cs3Ref := &provider.Reference{
-		Spec: &provider.Reference_Path{Path: path.Join("/", originalPath, relativePath)},
-	}
+	cs3Ref := &provider.Reference{Path: path.Join("/", originalPath, relativePath)}
 	log.Debug().
 		Interface("sourceRef", ref).
 		Interface("cs3Ref", cs3Ref).
@@ -473,13 +471,7 @@ func (s *service) Stat(ctx context.Context, req *provider.StatRequest) (*provide
 	}
 	var statResponse *provider.StatResponse
 	// the call has to be made to the gateway instead of the storage.
-	statResponse, err = s.gateway.Stat(ctx, &provider.StatRequest{
-		Ref: &provider.Reference{
-			Spec: &provider.Reference_Path{
-				Path: p,
-			},
-		},
-	})
+	statResponse, err = s.gateway.Stat(ctx, &provider.StatRequest{Ref: &provider.Reference{Path: p}})
 	if err != nil {
 		return &provider.StatResponse{
 			Status: status.NewInternal(ctx, err, "gateway: error calling Stat for ref:"+req.Ref.String()),
@@ -540,13 +532,7 @@ func (s *service) ListContainer(ctx context.Context, req *provider.ListContainer
 
 	listContainerR, err := s.gateway.ListContainer(
 		ctx,
-		&provider.ListContainerRequest{
-			Ref: &provider.Reference{
-				Spec: &provider.Reference_Path{
-					Path: path.Join("/", pathFromToken, relativePath),
-				},
-			},
-		},
+		&provider.ListContainerRequest{Ref: &provider.Reference{Path: path.Join("/", pathFromToken, relativePath)}},
 	)
 	if err != nil {
 		return &provider.ListContainerResponse{
@@ -587,8 +573,8 @@ func filterPermissions(l *provider.ResourcePermissions, r *provider.ResourcePerm
 }
 
 func (s *service) unwrap(ctx context.Context, ref *provider.Reference) (token string, relativePath string, err error) {
-	if ref.GetId() != nil {
-		return "", "", errtypes.BadRequest("need path based ref: got " + ref.String())
+	if ref.StorageId != "" || ref.NodeId != "" {
+		return "", "", errtypes.BadRequest("need absolute path ref: got " + ref.String())
 	}
 
 	if ref.GetPath() == "" {
@@ -698,7 +684,7 @@ func (s *service) resolveToken(ctx context.Context, token string) (string, *link
 	}
 
 	pathRes, err := s.gateway.GetPath(ctx, &provider.GetPathRequest{
-		ResourceId: publicShareResponse.GetShare().GetResourceId(),
+		Ref: publicShareResponse.GetShare().GetRef(),
 	})
 	switch {
 	case err != nil:
@@ -708,11 +694,7 @@ func (s *service) resolveToken(ctx context.Context, token string) (string, *link
 	}
 
 	sRes, err := s.gateway.Stat(ctx, &provider.StatRequest{
-		Ref: &provider.Reference{
-			Spec: &provider.Reference_Id{
-				Id: publicShareResponse.GetShare().GetResourceId(),
-			},
-		},
+		Ref: publicShareResponse.GetShare().GetRef(),
 	})
 	switch {
 	case err != nil:
@@ -720,5 +702,5 @@ func (s *service) resolveToken(ctx context.Context, token string) (string, *link
 	case sRes.Status.Code != rpc.Code_CODE_OK:
 		return "", nil, nil, sRes.Status, nil
 	}
-	return pathRes.Path, publicShareResponse.GetShare(), sRes.Info, nil, nil
+	return pathRes.Ref.Path, publicShareResponse.GetShare(), sRes.Info, nil, nil
 }
