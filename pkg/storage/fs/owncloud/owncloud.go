@@ -1154,7 +1154,23 @@ func (fs *ocfs) GetHome(ctx context.Context) (string, error) {
 	return "", nil
 }
 
-func (fs *ocfs) CreateDir(ctx context.Context, sp string) (err error) {
+func (fs *ocfs) CreateDir(ctx context.Context, ref *provider.Reference) (err error) {
+	if ref.Path == "" {
+		return errtypes.BadRequest("ocfs: cannot create folder without path")
+	}
+	parent := &provider.Reference{
+		StorageId: ref.StorageId,
+		NodeId:    ref.NodeId,
+		Path:      filepath.Dir(ref.Path),
+	}
+	name := filepath.Base(ref.Path)
+
+	dir, err := fs.resolve(ctx, parent)
+	if err != nil {
+		return nil
+	}
+	sp := filepath.Join(dir, name)
+
 	ip := fs.toInternalPath(ctx, sp)
 
 	// check permissions of parent dir
@@ -1187,12 +1203,12 @@ func (fs *ocfs) isShareFolderRoot(sp string) bool {
 	return sp == fs.c.ShareFolder
 }
 
-func (fs *ocfs) CreateReference(ctx context.Context, sp string, targetURI *url.URL) error {
-	if !fs.isShareFolderChild(sp) {
-		return errtypes.PermissionDenied("ocfs: cannot create references outside the share folder: share_folder=" + "/Shares" + " path=" + sp)
+func (fs *ocfs) CreateReference(ctx context.Context, ref *provider.Reference, targetURI *url.URL) error {
+	if !fs.isShareFolderChild(ref.Path) {
+		return errtypes.PermissionDenied("ocfs: cannot create references outside the share folder: share_folder=" + "/Shares" + " path=" + ref.Path)
 	}
 
-	ip := fs.toInternalShadowPath(ctx, sp)
+	ip := fs.toInternalShadowPath(ctx, ref.Path)
 	// TODO check permission?
 
 	dir, _ := filepath.Split(ip)
@@ -2218,6 +2234,10 @@ func (fs *ocfs) RestoreRecycleItem(ctx context.Context, key string, restoreRef *
 	// TODO(jfd) restore versions
 
 	return fs.propagate(ctx, tgt)
+}
+
+func (fs *ocfs) ListStorageSpaces(ctx context.Context, filter []*provider.ListStorageSpacesRequest_Filter) ([]*provider.StorageSpace, error) {
+	return nil, errtypes.NotSupported("list storage spaces")
 }
 
 func (fs *ocfs) propagate(ctx context.Context, leafPath string) error {

@@ -34,7 +34,7 @@ import (
 )
 
 // GetOrHeadFile returns the requested file content
-func GetOrHeadFile(w http.ResponseWriter, r *http.Request, fs storage.FS) {
+func GetOrHeadFile(w http.ResponseWriter, r *http.Request, fs storage.FS, spaceID string) {
 	ctx := r.Context()
 	sublog := appctx.GetLogger(ctx).With().Str("svc", "datatx").Str("handler", "download").Logger()
 
@@ -46,8 +46,14 @@ func GetOrHeadFile(w http.ResponseWriter, r *http.Request, fs storage.FS) {
 		fn = files[0]
 	}
 
-	ref := &provider.Reference{Path: fn}
-
+	var ref *provider.Reference
+	if spaceID == "" {
+		ref = &provider.Reference{Path: fn}
+	} else {
+		// build a storage space reference
+		// FIXME @butonic split the spaceid
+		ref = &provider.Reference{NodeId: spaceID, Path: fn}
+	}
 	// TODO check preconditions like If-Range, If-Match ...
 
 	var md *provider.ResourceInfo

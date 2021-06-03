@@ -283,7 +283,7 @@ func (fs *s3FS) UnsetArbitraryMetadata(ctx context.Context, ref *provider.Refere
 	return errtypes.NotSupported("s3: operation not supported")
 }
 
-func (fs *s3FS) CreateReference(ctx context.Context, path string, targetURI *url.URL) error {
+func (fs *s3FS) CreateReference(ctx context.Context, ref *provider.Reference, targetURI *url.URL) error {
 	// TODO(jfd):implement
 	return errtypes.NotSupported("s3: operation not supported")
 }
@@ -296,8 +296,24 @@ func (fs *s3FS) CreateHome(ctx context.Context) error {
 	return errtypes.NotSupported("s3fs: not supported")
 }
 
-func (fs *s3FS) CreateDir(ctx context.Context, fn string) error {
+func (fs *s3FS) CreateDir(ctx context.Context, ref *provider.Reference) error {
+	if ref.Path == "" {
+		return errtypes.BadRequest("localfs: cannot create folder without path")
+	}
 	log := appctx.GetLogger(ctx)
+
+	parent := &provider.Reference{
+		StorageId: ref.StorageId,
+		NodeId:    ref.NodeId,
+		Path:      path.Dir(ref.Path),
+	}
+	name := path.Base(ref.Path)
+	dir, err := fs.resolve(ctx, parent)
+	if err != nil {
+		return nil // TODO WTF
+	}
+	fn := path.Join(dir, name)
+
 	fn = fs.addRoot(fn) + "/" // append / to indicate folder // TODO only if fn does not end in /
 
 	input := &s3.PutObjectInput{
@@ -667,4 +683,8 @@ func (fs *s3FS) ListRecycle(ctx context.Context) ([]*provider.RecycleItem, error
 
 func (fs *s3FS) RestoreRecycleItem(ctx context.Context, key string, restoreRef *provider.Reference) error {
 	return errtypes.NotSupported("restore recycle")
+}
+
+func (fs *s3FS) ListStorageSpaces(ctx context.Context, filter []*provider.ListStorageSpacesRequest_Filter) ([]*provider.StorageSpace, error) {
+	return nil, errtypes.NotSupported("list storage spaces")
 }

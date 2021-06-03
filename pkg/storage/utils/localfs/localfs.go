@@ -527,13 +527,17 @@ func (fs *localfs) UpdateGrant(ctx context.Context, ref *provider.Reference, g *
 	return fs.AddGrant(ctx, ref, g)
 }
 
-func (fs *localfs) CreateReference(ctx context.Context, path string, targetURI *url.URL) error {
+func (fs *localfs) CreateReference(ctx context.Context, ref *provider.Reference, targetURI *url.URL) error {
+	if ref.Path == "" {
+		return errtypes.BadRequest("localfs: cannot create references without path")
+	}
+
 	var fn string
 	switch {
-	case fs.isShareFolder(ctx, path):
-		fn = fs.wrapReferences(ctx, path)
-	case fs.isDataTransfersFolder(ctx, path):
-		fn = fs.wrap(ctx, path)
+	case fs.isShareFolder(ctx, ref.Path):
+		fn = fs.wrapReferences(ctx, ref.Path)
+	case fs.isDataTransfersFolder(ctx, ref.Path):
+		fn = fs.wrap(ctx, ref.Path)
 	default:
 		return errtypes.PermissionDenied("localfs: cannot create references outside the share folder and data transfers folder")
 	}
@@ -740,7 +744,21 @@ func (fs *localfs) createHomeInternal(ctx context.Context, fn string) error {
 	return nil
 }
 
-func (fs *localfs) CreateDir(ctx context.Context, fn string) error {
+func (fs *localfs) CreateDir(ctx context.Context, ref *provider.Reference) error {
+	if ref.Path == "" {
+		return errtypes.BadRequest("localfs: cannot create folder without path")
+	}
+	parent := &provider.Reference{
+		StorageId: ref.StorageId,
+		NodeId:    ref.NodeId,
+		Path:      path.Dir(ref.Path),
+	}
+	name := path.Base(ref.Path)
+	dir, err := fs.resolve(ctx, parent)
+	if err != nil {
+		return nil
+	}
+	fn := path.Join(dir, name)
 
 	if fs.isShareFolder(ctx, fn) {
 		return errtypes.PermissionDenied("localfs: cannot create folder under the share folder")
@@ -750,7 +768,7 @@ func (fs *localfs) CreateDir(ctx context.Context, fn string) error {
 	if _, err := os.Stat(fn); err == nil {
 		return errtypes.AlreadyExists(fn)
 	}
-	err := os.Mkdir(fn, 0700)
+	err = os.Mkdir(fn, 0700)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return errtypes.NotFound(fn)
@@ -1240,6 +1258,10 @@ func (fs *localfs) RestoreRecycleItem(ctx context.Context, restoreKey string, re
 	}
 
 	return fs.propagate(ctx, localRestorePath)
+}
+
+func (fs *localfs) ListStorageSpaces(ctx context.Context, filter []*provider.ListStorageSpacesRequest_Filter) ([]*provider.StorageSpace, error) {
+	return nil, errtypes.NotSupported("list storage spaces")
 }
 
 func (fs *localfs) propagate(ctx context.Context, leafPath string) error {

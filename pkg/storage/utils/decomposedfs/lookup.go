@@ -40,16 +40,25 @@ type Lookup struct {
 
 // NodeFromResource takes in a request path or request id and converts it to a Node
 func (lu *Lookup) NodeFromResource(ctx context.Context, ref *provider.Reference) (*node.Node, error) {
-	if ref.Path != "" {
+	if ref.StorageId == "" || ref.NodeId == "" {
 		return lu.NodeFromPath(ctx, ref.GetPath())
 	}
 
-	if ref.StorageId != "" || ref.NodeId != "" {
-		return lu.NodeFromID(ctx, ref)
+	// currently, the decomposed fs uses the root node id as the space id
+	n, err := lu.NodeFromID(ctx, ref)
+	if err != nil {
+		return nil, err
 	}
-
-	// reference is invalid
-	return nil, fmt.Errorf("invalid reference %+v", ref)
+	if ref.Path != "" {
+		// now walk the relative path
+		n, err = lu.WalkPath(ctx, n, ref.Path, func(ctx context.Context, n *node.Node) error {
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return n, nil
 }
 
 // NodeFromPath converts a filename into a Node

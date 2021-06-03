@@ -956,7 +956,10 @@ func (fs *eosfs) createUserDir(ctx context.Context, u *userpb.User, path string,
 	return nil
 }
 
-func (fs *eosfs) CreateDir(ctx context.Context, p string) error {
+func (fs *eosfs) CreateDir(ctx context.Context, ref *provider.Reference) error {
+	if ref.Path == "" {
+		return errtypes.BadRequest("eosfs: cannot create folder without path")
+	}
 	log := appctx.GetLogger(ctx)
 	u, err := getUser(ctx)
 	if err != nil {
@@ -968,6 +971,18 @@ func (fs *eosfs) CreateDir(ctx context.Context, p string) error {
 		return err
 	}
 
+	parent := &provider.Reference{
+		StorageId: ref.StorageId,
+		NodeId:    ref.NodeId,
+		Path:      path.Dir(ref.Path),
+	}
+	name := path.Base(ref.Path)
+	dir, err := fs.resolve(ctx, u, parent)
+	if err != nil {
+		return nil
+	}
+	p := path.Join(dir, name)
+
 	log.Info().Msgf("eos: createdir: path=%s", p)
 
 	if fs.isShareFolder(ctx, p) {
@@ -978,18 +993,18 @@ func (fs *eosfs) CreateDir(ctx context.Context, p string) error {
 	return fs.c.CreateDir(ctx, uid, gid, fn)
 }
 
-func (fs *eosfs) CreateReference(ctx context.Context, p string, targetURI *url.URL) error {
+func (fs *eosfs) CreateReference(ctx context.Context, ref *provider.Reference, targetURI *url.URL) error {
 	// TODO(labkode): for the time being we only allow to create references
 	// on the virtual share folder to not pollute the nominal user tree.
-	if !fs.isShareFolder(ctx, p) {
-		return errtypes.PermissionDenied("eos: cannot create references outside the share folder: share_folder=" + fs.conf.ShareFolder + " path=" + p)
+	if !fs.isShareFolder(ctx, ref.Path) {
+		return errtypes.PermissionDenied("eos: cannot create references outside the share folder: share_folder=" + fs.conf.ShareFolder + " path=" + ref.Path)
 	}
 	u, err := getUser(ctx)
 	if err != nil {
 		return errors.Wrap(err, "eos: no user in ctx")
 	}
 
-	fn := fs.wrapShadow(ctx, p)
+	fn := fs.wrapShadow(ctx, ref.Path)
 
 	// TODO(labkode): with grpc we can create a file touching with xattrs.
 	// Current mechanism is: touch to hidden dir, set xattr, rename.
@@ -1303,6 +1318,10 @@ func (fs *eosfs) RestoreRecycleItem(ctx context.Context, key string, restoreRef 
 	}
 
 	return fs.c.RestoreDeletedEntry(ctx, uid, gid, key)
+}
+
+func (fs *eosfs) ListStorageSpaces(ctx context.Context, filter []*provider.ListStorageSpacesRequest_Filter) ([]*provider.StorageSpace, error) {
+	return nil, errtypes.NotSupported("list storage spaces")
 }
 
 func (fs *eosfs) convertToRecycleItem(ctx context.Context, eosDeletedItem *eosclient.DeletedEntry) (*provider.RecycleItem, error) {

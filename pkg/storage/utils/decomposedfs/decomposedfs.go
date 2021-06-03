@@ -24,13 +24,16 @@ package decomposedfs
 import (
 	"context"
 	"io"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	userv1beta1 "github.com/cs3org/go-cs3apis/cs3/identity/user/v1beta1"
 	provider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
+	types "github.com/cs3org/go-cs3apis/cs3/types/v1beta1"
 	"github.com/cs3org/reva/pkg/appctx"
 	"github.com/cs3org/reva/pkg/errtypes"
 	"github.com/cs3org/reva/pkg/logger"
@@ -235,14 +238,28 @@ func (fs *Decomposedfs) GetPathByID(ctx context.Context, id *provider.Reference)
 }
 
 // CreateDir creates the specified directory
-func (fs *Decomposedfs) CreateDir(ctx context.Context, fn string) (err error) {
+func (fs *Decomposedfs) CreateDir(ctx context.Context, ref *provider.Reference) (err error) {
+	if ref.Path == "" {
+		return errtypes.BadRequest("decomposedfs: cannot create folder without path")
+	}
+
+	parent := &provider.Reference{
+		StorageId: ref.StorageId,
+		NodeId:    ref.NodeId,
+		Path:      filepath.Dir(ref.Path),
+	}
+	name := filepath.Base(ref.Path)
+
 	var n *node.Node
-	if n, err = fs.lu.NodeFromPath(ctx, fn); err != nil {
+	if n, err = fs.lu.NodeFromResource(ctx, parent); err != nil {
+		return
+	}
+	if n, err = n.Child(ctx, name); err != nil {
 		return
 	}
 
 	if n.Exists {
-		return errtypes.AlreadyExists(fn)
+		return errtypes.AlreadyExists(name)
 	}
 	pn, err := n.Parent()
 	if err != nil {
@@ -276,17 +293,17 @@ func (fs *Decomposedfs) CreateDir(ctx context.Context, fn string) (err error) {
 // In effect everything is a shadow namespace.
 // To mimic the eos end owncloud driver we only allow references as children of the "/Shares" folder
 // TODO when home support is enabled should the "/Shares" folder still be listed?
-func (fs *Decomposedfs) CreateReference(ctx context.Context, p string, targetURI *url.URL) (err error) {
+func (fs *Decomposedfs) CreateReference(ctx context.Context, ref *provider.Reference, targetURI *url.URL) (err error) {
 
-	p = strings.Trim(p, "/")
-	parts := strings.Split(p, "/")
+	ref.Path = strings.Trim(ref.Path, "/")
+	parts := strings.Split(ref.Path, "/")
 
 	if len(parts) != 2 {
-		return errtypes.PermissionDenied("Decomposedfs: references must be a child of the share folder: share_folder=" + fs.o.ShareFolder + " path=" + p)
+		return errtypes.PermissionDenied("Decomposedfs: references must be a child of the share folder: share_folder=" + fs.o.ShareFolder + " path=" + ref.Path)
 	}
 
 	if parts[0] != strings.Trim(fs.o.ShareFolder, "/") {
-		return errtypes.PermissionDenied("Decomposedfs: cannot create references outside the share folder: share_folder=" + fs.o.ShareFolder + " path=" + p)
+		return errtypes.PermissionDenied("Decomposedfs: cannot create references outside the share folder: share_folder=" + fs.o.ShareFolder + " path=" + ref.Path)
 	}
 
 	// create Shares folder if it does not exist
@@ -305,7 +322,7 @@ func (fs *Decomposedfs) CreateReference(ctx context.Context, p string, targetURI
 
 	if n.Exists {
 		// TODO append increasing number to mountpoint name
-		return errtypes.AlreadyExists(p)
+		return errtypes.AlreadyExists(ref.Path)
 	}
 
 	if err = fs.tp.CreateDir(ctx, n); err != nil {
@@ -463,6 +480,161 @@ func (fs *Decomposedfs) Download(ctx context.Context, ref *provider.Reference) (
 		return nil, errors.Wrap(err, "Decomposedfs: error download blob '"+node.ID+"'")
 	}
 	return reader, nil
+}
+
+// ListStorageSpaces returns a list of StorageSpaces.
+// The list can be filtered by space type or space id.
+func (fs *Decomposedfs) ListStorageSpaces(ctx context.Context, filter []*provider.ListStorageSpacesRequest_Filter) ([]*provider.StorageSpace, error) {
+	// TODO check filters
+
+	// for, now list all user homes
+	// TODO make a dedicated /spaces subfolder in the storage root, next to /nodes, /blobs and /trash
+	// it should follow /spaces/<type>/<spaceid> -> ../../nodes/<nodeid> and point to the root node of the space
+	// needs a migration step that checks if the /spaces folder exists, if not
+	// - it iterates over the /nodes/root folder to create /spaces/personal/<spaceid> symlinks
+	// - it iterates over all /nodes/<uuid> entries to create /spaces/shares/<spaceid> symlinks
+	//  - should be good enough to iterate over the /nodes/<uuid> entries, because the ext attrs should indicate personal spaces or share spaces
+	// when the space symlink is broken delete the space? yes
+	// read permissions are deduced from the node?
+	// the spaceid can be the nodeid
+
+	// this actually requires us to move all user homes into a subfolder of /nodes/root,
+	// e.g. /nodes/root/<space type> otherwise storage space names might collide even though they are of different types
+	// /nodes/root/personal/foo and /nodes/root/shares/foo might be two very different spaces, a /nodes/root/foo is not expressive enough
+	// we would not need /nodes/root if access always happened via spaceid+relative path
+
+	spaceType := "*"
+	spaceID := "*"
+
+	for i := range filter {
+		switch filter[i].Type {
+		case provider.ListStorageSpacesRequest_Filter_TYPE_SPACE_TYPE:
+			spaceType = filter[i].GetSpaceType()
+		case provider.ListStorageSpacesRequest_Filter_TYPE_ID:
+			//spaceId = filter[i].GetId().OpaqueId // TODO requests needs to contain the driveid ... currently it is the storage id
+		}
+	}
+
+	// /var/lib/ocis/storage/users/spaces/personal/nodeid
+	// /var/lib/ocis/storage/users/spaces/shared/nodeid
+	matches, err := filepath.Glob(filepath.Join(fs.o.Root, "spaces", spaceType, spaceID))
+	if err != nil {
+		return nil, err
+	}
+
+	var spaces []*provider.StorageSpace
+
+	u, ok := user.ContextGetUser(ctx)
+	if !ok {
+		appctx.GetLogger(ctx).Debug().Msg("expected user in context")
+		return spaces, nil
+	}
+
+	for i := range matches {
+		// always read link in case storage space id != node id
+		if target, err := os.Readlink(matches[i]); err != nil {
+			appctx.GetLogger(ctx).Error().Err(err).Str("match", matches[i]).Msg("could not read link, skipping")
+			continue
+		} else {
+			n, err := node.ReadNode(ctx, fs.lu, filepath.Base(target))
+			if err != nil {
+				appctx.GetLogger(ctx).Error().Err(err).Str("id", filepath.Base(target)).Msg("could not read node, skipping")
+				continue
+			}
+			owner, err := n.Owner()
+			if err != nil {
+				appctx.GetLogger(ctx).Error().Err(err).Interface("node", n).Msg("could not read owner, skipping")
+				continue
+			}
+
+			// filter out spaces user cannot access (currently based on stat permission)
+			p, err := n.ReadUserPermissions(ctx, u)
+			if err != nil {
+				appctx.GetLogger(ctx).Error().Err(err).Interface("node", n).Msg("could not read permissions, skipping")
+				continue
+			}
+			if !p.Stat {
+				continue
+			}
+
+			// TODO apply filter
+
+			// build return value
+
+			space := &provider.StorageSpace{
+				Id: &provider.StorageSpaceId{OpaqueId: n.ID}, // FIXME Id should just be a string
+				Root: &provider.Reference{
+					StorageId: "1284d238-aa92-42ce-bdc4-0b0000009157", // FIXME storage provider id needs to be returned so the gateway can route
+					NodeId:    n.ID,
+				},
+				Name:      n.Name,
+				SpaceType: filepath.Base(filepath.Dir(matches[i])),
+				// Mtime is set either as node.tmtime or as fi.mtime below
+			}
+
+			if space.SpaceType == "share" {
+				// return folder name?
+				space.Name = n.Name
+			} else {
+				space.Name = "root" // do not expose the id as name, this is the root of a space
+				// TODO read from extended attribute for project / group spaces
+			}
+
+			// fill in user object if the current user is the owner
+			if owner.Idp == u.Id.Idp && owner.OpaqueId == u.Id.OpaqueId {
+				space.Owner = u
+			} else {
+				space.Owner = &userv1beta1.User{ // FIXME only return a UserID, not a full blown user object
+					Id: owner,
+				}
+			}
+
+			// we set the space mtime to the root item mtime
+			// override the stat mtime with a tmtime if it is present
+			if tmt, err := n.GetTMTime(); err == nil {
+				un := tmt.UnixNano()
+				space.Mtime = &types.Timestamp{
+					Seconds: uint64(un / 1000000000),
+					Nanos:   uint32(un % 1000000000),
+				}
+			} else {
+				// fall back to stat mtime
+				if fi, err := os.Stat(matches[i]); err == nil {
+					un := fi.ModTime().UnixNano()
+					space.Mtime = &types.Timestamp{
+						Seconds: uint64(un / 1000000000),
+						Nanos:   uint32(un % 1000000000),
+					}
+				}
+			}
+
+			// quota
+			v, err := xattr.Get(matches[i], xattrs.QuotaAttr)
+			switch {
+			case err == nil:
+				// make sure we have a proper signed int
+				// we use the same magic numbers to indicate:
+				// -1 = uncalculated
+				// -2 = unknown
+				// -3 = unlimited
+				if quota, err := strconv.ParseInt(string(v), 10, 64); err == nil {
+					if quota >= 0 {
+						space.Quota = &provider.Quota{
+							QuotaMaxBytes: uint64(quota),
+							QuotaMaxFiles: math.MaxUint64, // TODO MaxUInt64? = unlimited? why even max files? 0 = unlimited?
+						}
+					}
+				} else {
+					appctx.GetLogger(ctx).Debug().Err(err).Str("nodepath", matches[i]).Msg("could not read quota")
+				}
+			}
+
+			spaces = append(spaces, space)
+		}
+	}
+
+	return spaces, nil
+
 }
 
 func (fs *Decomposedfs) copyMD(s string, t string) (err error) {
