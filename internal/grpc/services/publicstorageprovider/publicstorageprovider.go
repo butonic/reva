@@ -167,6 +167,16 @@ func (s *service) translatePublicRefToCS3Ref(ctx context.Context, ref *provider.
 // this `res` will get then expanded taking into account the authenticated user and the storage:
 // end         = /einstein/files/public-links/foldera/folderb/
 
+// CS3 api
+// /public/<token>/path/to/resource is what arrives via ocdav
+// the publicstorageprovider uses the token to look up the root:
+// <token> -> ref, resolve token at the share manager to get an ID based reference
+// with our new references we can just add the path to the ID reference from the share manager
+// previously we had to convert the ID based reference to a path based reference so we could combine them
+// that was the reason for a GetPath.
+// With the new references we can always combine an ID based reference with a relative path
+// TODO GetPath is obsolete
+
 func (s *service) initiateFileDownload(ctx context.Context, req *provider.InitiateFileDownloadRequest) (*provider.InitiateFileDownloadResponse, error) {
 	cs3Ref, _, ls, st, err := s.translatePublicRefToCS3Ref(ctx, req.Ref)
 	switch {
@@ -683,6 +693,7 @@ func (s *service) resolveToken(ctx context.Context, token string) (string, *link
 		return "", nil, nil, publicShareResponse.Status, nil
 	}
 
+	// FIXME @butonic we can get rid of GetPath, because the new Reference can combine the ID based reference from the share with the relative path
 	pathRes, err := s.gateway.GetPath(ctx, &provider.GetPathRequest{
 		Ref: publicShareResponse.GetShare().GetRef(),
 	})
@@ -702,5 +713,5 @@ func (s *service) resolveToken(ctx context.Context, token string) (string, *link
 	case sRes.Status.Code != rpc.Code_CODE_OK:
 		return "", nil, nil, sRes.Status, nil
 	}
-	return pathRes.Ref.Path, publicShareResponse.GetShare(), sRes.Info, nil, nil
+	return pathRes.Path, publicShareResponse.GetShare(), sRes.Info, nil, nil
 }

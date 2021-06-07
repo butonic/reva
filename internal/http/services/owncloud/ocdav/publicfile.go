@@ -113,10 +113,10 @@ func (s *svc) adjustResourcePathInURL(w http.ResponseWriter, r *http.Request) bo
 		HandleErrorStatus(&sublog, w, pathRes.Status)
 		return false
 	}
-	if path.Base(r.URL.Path) != path.Base(pathRes.Ref.Path) {
+	if path.Base(r.URL.Path) != path.Base(pathRes.Path) {
 		sublog.Debug().
 			Str("requestbase", path.Base(r.URL.Path)).
-			Str("pathbase", path.Base(pathRes.Ref.Path)).
+			Str("pathbase", path.Base(pathRes.Path)).
 			Msg("base paths don't match")
 		w.WriteHeader(http.StatusConflict)
 		return false
@@ -178,13 +178,13 @@ func (s *svc) handlePropfindOnToken(w http.ResponseWriter, r *http.Request, ns s
 		return
 	}
 
-	if !onContainer && path.Base(r.URL.Path) != path.Base(pathRes.Ref.Path) {
+	if !onContainer && path.Base(r.URL.Path) != path.Base(pathRes.Path) {
 		// if queried on the wrong path, return not found
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	// adjust path
-	tokenStatInfo.Path = path.Join("/", tokenStatInfo.Path, path.Base(pathRes.Ref.Path))
+	tokenStatInfo.Path = path.Join("/", tokenStatInfo.Path, path.Base(pathRes.Path))
 
 	infos := s.getPublicFileInfos(onContainer, depth == "0", tokenStatInfo)
 

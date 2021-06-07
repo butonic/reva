@@ -250,20 +250,16 @@ func (fs *Decomposedfs) CreateDir(ctx context.Context, ref *provider.Reference) 
 	}
 	name := filepath.Base(ref.Path)
 
-	var n *node.Node
-	if n, err = fs.lu.NodeFromResource(ctx, parent); err != nil {
+	var pn, cn *node.Node
+	if pn, err = fs.lu.NodeFromResource(ctx, parent); err != nil {
 		return
 	}
-	if n, err = n.Child(ctx, name); err != nil {
+	if cn, err = pn.Child(ctx, name); err != nil {
 		return
 	}
 
-	if n.Exists {
+	if cn.Exists {
 		return errtypes.AlreadyExists(name)
-	}
-	pn, err := n.Parent()
-	if err != nil {
-		return errors.Wrap(err, "Decomposedfs: error getting parent "+n.ParentID)
 	}
 	ok, err := fs.p.HasPermission(ctx, pn, func(rp *provider.ResourcePermissions) bool {
 		return rp.CreateContainer
@@ -272,16 +268,16 @@ func (fs *Decomposedfs) CreateDir(ctx context.Context, ref *provider.Reference) 
 	case err != nil:
 		return errtypes.InternalError(err.Error())
 	case !ok:
-		return errtypes.PermissionDenied(filepath.Join(n.ParentID, n.Name))
+		return errtypes.PermissionDenied(ref.Path)
 	}
 
-	err = fs.tp.CreateDir(ctx, n)
+	err = fs.tp.CreateDir(ctx, cn)
 
 	if fs.o.TreeTimeAccounting {
-		nodePath := n.InternalPath()
+		nodePath := cn.InternalPath()
 		// mark the home node as the end of propagation
 		if err = xattr.Set(nodePath, xattrs.PropagationAttr, []byte("1")); err != nil {
-			appctx.GetLogger(ctx).Error().Err(err).Interface("node", n).Msg("could not mark node to propagate")
+			appctx.GetLogger(ctx).Error().Err(err).Interface("node", cn).Msg("could not mark node to propagate")
 			return
 		}
 	}
@@ -482,6 +478,15 @@ func (fs *Decomposedfs) Download(ctx context.Context, ref *provider.Reference) (
 	return reader, nil
 }
 
+// splitSpaceID splits a space id of the form <storageid>!<nodeid> into two parts
+func splitSpaceID(spaceID string) (string, string) {
+	parts := strings.SplitN(spaceID, "!", 2)
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return parts[0], parts[1]
+}
+
 // ListStorageSpaces returns a list of StorageSpaces.
 // The list can be filtered by space type or space id.
 func (fs *Decomposedfs) ListStorageSpaces(ctx context.Context, filter []*provider.ListStorageSpacesRequest_Filter) ([]*provider.StorageSpace, error) {
@@ -511,7 +516,7 @@ func (fs *Decomposedfs) ListStorageSpaces(ctx context.Context, filter []*provide
 		case provider.ListStorageSpacesRequest_Filter_TYPE_SPACE_TYPE:
 			spaceType = filter[i].GetSpaceType()
 		case provider.ListStorageSpacesRequest_Filter_TYPE_ID:
-			//spaceId = filter[i].GetId().OpaqueId // TODO requests needs to contain the driveid ... currently it is the storage id
+			_, spaceID = splitSpaceID(filter[i].GetId().OpaqueId)
 		}
 	}
 
@@ -562,7 +567,7 @@ func (fs *Decomposedfs) ListStorageSpaces(ctx context.Context, filter []*provide
 			// build return value
 
 			space := &provider.StorageSpace{
-				Id: &provider.StorageSpaceId{OpaqueId: n.ID}, // FIXME Id should just be a string
+				Id: &provider.StorageSpaceId{OpaqueId: "1284d238-aa92-42ce-bdc4-0b0000009157!" + n.ID}, // FIXME Id should just be a string
 				Root: &provider.Reference{
 					StorageId: "1284d238-aa92-42ce-bdc4-0b0000009157", // FIXME storage provider id needs to be returned so the gateway can route
 					NodeId:    n.ID,

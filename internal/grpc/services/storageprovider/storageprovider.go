@@ -52,7 +52,6 @@ func init() {
 }
 
 type config struct {
-	MountPath        string                            `mapstructure:"mount_path" docs:"/;The path where the file system would be mounted."`
 	MountID          string                            `mapstructure:"mount_id" docs:"-;The ID of the mounted file system."`
 	Driver           string                            `mapstructure:"driver" docs:"localhome;The storage driver to be used."`
 	Drivers          map[string]map[string]interface{} `mapstructure:"drivers" docs:"url:pkg/storage/fs/localhome/localhome.go"`
@@ -66,10 +65,6 @@ type config struct {
 func (c *config) init() {
 	if c.Driver == "" {
 		c.Driver = "localhome"
-	}
-
-	if c.MountPath == "" {
-		c.MountPath = "/"
 	}
 
 	if c.MountID == "" {
@@ -96,12 +91,12 @@ func (c *config) init() {
 }
 
 type service struct {
-	conf               *config
-	storage            storage.FS
-	mountPath, mountID string
-	tmpFolder          string
-	dataServerURL      *url.URL
-	availableXS        []*provider.ResourceChecksumPriority
+	conf          *config
+	storage       storage.FS
+	mountID       string
+	tmpFolder     string
+	dataServerURL *url.URL
+	availableXS   []*provider.ResourceChecksumPriority
 }
 
 func (s *service) Close() error {
@@ -153,7 +148,7 @@ func New(m map[string]interface{}, ss *grpc.Server) (rgrpc.Service, error) {
 		return nil, err
 	}
 
-	mountPath := c.MountPath
+	//mountPath := c.MountPath
 	mountID := c.MountID
 
 	fs, err := getFS(c)
@@ -180,10 +175,10 @@ func New(m map[string]interface{}, ss *grpc.Server) (rgrpc.Service, error) {
 	registerMimeTypes(c.MimeTypes)
 
 	service := &service{
-		conf:          c,
-		storage:       fs,
-		tmpFolder:     c.TmpFolder,
-		mountPath:     mountPath,
+		conf:      c,
+		storage:   fs,
+		tmpFolder: c.TmpFolder,
+		//mountPath:     mountPath,
 		mountID:       mountID,
 		dataServerURL: u,
 		availableXS:   xsTypes,
@@ -371,22 +366,20 @@ func (s *service) GetPath(ctx context.Context, req *provider.GetPathRequest) (*p
 		}, nil
 	}
 
-	fn = path.Join(s.mountPath, path.Clean(fn))
+	fn = path.Join("/", path.Clean(fn))
 	res := &provider.GetPathResponse{
-		// FIXME @butonic REFERENCE return StorageId, NodeId and relative path if request contains ids?
-		Ref:    &provider.Reference{Path: fn},
+		Path:   fn,
 		Status: status.NewOK(ctx),
 	}
 	return res, nil
 }
 
 func (s *service) GetHome(ctx context.Context, req *provider.GetHomeRequest) (*provider.GetHomeResponse, error) {
-	home := path.Join(s.mountPath)
 
 	res := &provider.GetHomeResponse{
 		Status: status.NewOK(ctx),
 		// FIXME @butonic REFERENCE return StorageId, NodeId and relative path if request contains ids
-		Ref: &provider.Reference{Path: home}, //  FIXME @butonic REFERENCE this is a configured mount path ... why
+		Ref: &provider.Reference{Path: "/"},
 	}
 
 	return res, nil
@@ -552,6 +545,9 @@ func (s *service) Stat(ctx context.Context, req *provider.StatRequest) (*provide
 			Status: st,
 		}, nil
 	}
+	if md.Id.StorageId == "" {
+		md.Id.StorageId = s.mountID
+	}
 
 	res := &provider.StatResponse{
 		Status: status.NewOK(ctx),
@@ -614,6 +610,11 @@ func (s *service) ListContainer(ctx context.Context, req *provider.ListContainer
 		return &provider.ListContainerResponse{
 			Status: st,
 		}, nil
+	}
+	for i := range mds {
+		if mds[i].Id != nil && mds[i].Id.StorageId == "" {
+			mds[i].Id.StorageId = s.mountID
+		}
 	}
 
 	res := &provider.ListContainerResponse{

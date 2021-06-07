@@ -215,7 +215,7 @@ func wrapResourceID(r *provider.Reference) string {
 // - url safe, because the id might be used in a url, eg. the /dav/meta nodes
 // which is why we base64 encode it
 func wrap(sid string, oid string) string {
-	return base64.URLEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", sid, oid)))
+	return fmt.Sprintf("%s!%s", sid, oid)
 }
 
 func unwrap(rid string) *provider.Reference {
@@ -224,7 +224,7 @@ func unwrap(rid string) *provider.Reference {
 		return nil
 	}
 
-	parts := strings.SplitN(string(decodedID), ":", 2)
+	parts := strings.SplitN(string(decodedID), "!", 2)
 	if len(parts) != 2 {
 		return nil
 	}

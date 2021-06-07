@@ -308,7 +308,7 @@ func (m *mgr) Share(ctx context.Context, md *provider.Reference, g *ocm.ShareGra
 		requestBody := url.Values{
 			"shareWith":    {g.Grantee.GetUserId().OpaqueId},
 			"name":         {name},
-			"providerId":   {fmt.Sprintf("%s:%s", md.StorageId, md.NodeId)}, // TODO @butonic REFERENCE providerId?
+			"providerId":   {fmt.Sprintf("%s!%s", md.StorageId, md.NodeId)}, // TODO @butonic REFERENCE providerId?
 			"owner":        {userID.OpaqueId},
 			"protocol":     {string(protocol)},
 			"meshProvider": {userID.Idp},

@@ -325,7 +325,7 @@ func (s *svc) createReference(ctx context.Context, resourceID *provider.Referenc
 	log := appctx.GetLogger(ctx)
 
 	// get the metadata about the share
-	c, err := s.find(ctx, resourceID)
+	c, _, err := s.find(ctx, resourceID)
 	if err != nil {
 		if _, ok := err.(errtypes.IsNotFound); ok {
 			return status.NewNotFound(ctx, "storage provider not found")
@@ -373,7 +373,7 @@ func (s *svc) createReference(ctx context.Context, resourceID *provider.Referenc
 		TargetUri: fmt.Sprintf("cs3:%s/%s", resourceID.StorageId, resourceID.NodeId),
 	}
 
-	c, err = s.findByPath(ctx, refPath)
+	c, createRefReq.Ref, err = s.find(ctx, &provider.Reference{Path: refPath})
 	if err != nil {
 		if _, ok := err.(errtypes.IsNotFound); ok {
 			return status.NewNotFound(ctx, "storage provider not found")
@@ -407,7 +407,7 @@ func (s *svc) addGrant(ctx context.Context, id *provider.Reference, g *provider.
 		},
 	}
 
-	c, err := s.find(ctx, id)
+	c, _, err := s.find(ctx, id)
 	if err != nil {
 		if _, ok := err.(errtypes.IsNotFound); ok {
 			return status.NewNotFound(ctx, "storage provider not found"), nil
@@ -437,7 +437,7 @@ func (s *svc) updateGrant(ctx context.Context, id *provider.Reference, g *provid
 		},
 	}
 
-	c, err := s.find(ctx, id)
+	c, _, err := s.find(ctx, id)
 	if err != nil {
 		if _, ok := err.(errtypes.IsNotFound); ok {
 			return status.NewNotFound(ctx, "storage provider not found"), nil
@@ -467,7 +467,7 @@ func (s *svc) removeGrant(ctx context.Context, id *provider.Reference, g *provid
 		},
 	}
 
-	c, err := s.find(ctx, id)
+	c, _, err := s.find(ctx, id)
 	if err != nil {
 		if _, ok := err.(errtypes.IsNotFound); ok {
 			return status.NewNotFound(ctx, "storage provider not found"), nil

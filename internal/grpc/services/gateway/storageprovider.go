@@ -76,7 +76,7 @@ func (s *svc) CreateHome(ctx context.Context, req *provider.CreateHomeRequest) (
 	log := appctx.GetLogger(ctx)
 
 	home := s.getHome(ctx)
-	c, err := s.findByPath(ctx, home)
+	c, _, err := s.find(ctx, &provider.Reference{Path: home})
 	if err != nil {
 		return &provider.CreateHomeResponse{
 			Status: status.NewStatusFromErrType(ctx, "error finding home", err),
@@ -96,10 +96,10 @@ func (s *svc) CreateHome(ctx context.Context, req *provider.CreateHomeRequest) (
 func (s *svc) CreateStorageSpace(ctx context.Context, req *provider.CreateStorageSpaceRequest) (*provider.CreateStorageSpaceResponse, error) {
 	log := appctx.GetLogger(ctx)
 	// TODO: needs to be fixed
-	c, err := s.findByPath(ctx, req.Type)
+	c, _, err := s.find(ctx, &provider.Reference{Path: req.Type})
 	if err != nil {
 		return &provider.CreateStorageSpaceResponse{
-			Status: status.NewStatusFromErrType(ctx, "error finding path", err),
+			Status: status.NewStatusFromErrType(ctx, "error finding space for type "+req.Type, err),
 		}, nil
 	}
 
@@ -113,6 +113,14 @@ func (s *svc) CreateStorageSpace(ctx context.Context, req *provider.CreateStorag
 	return res, nil
 }
 
+func isIdReference(r *provider.Reference) bool {
+	return r.StorageId != "" && r.NodeId != "" && r.Path == ""
+}
+
+func isPathReference(r *provider.Reference) bool {
+	return r.StorageId == "" && r.NodeId == "" && r.Path != ""
+}
+
 func isStorageSpaceReference(r *provider.Reference) bool {
 	return r.StorageId != "" && r.NodeId != "" && r.Path != ""
 }
@@ -120,10 +128,14 @@ func isStorageSpaceReference(r *provider.Reference) bool {
 // splitSpaceID splits a space id of the form <storageid>!<nodeid> into two parts
 func splitSpaceID(spaceID string) (string, string) {
 	parts := strings.SplitN(spaceID, "!", 2)
-	if len(parts) != 2 {
+	switch len(parts) {
+	case 1:
+		return parts[0], ""
+	case 2:
+		return parts[0], parts[1]
+	default:
 		return "", ""
 	}
-	return parts[0], parts[1]
 }
 
 func (s *svc) ListStorageSpaces(ctx context.Context, req *provider.ListStorageSpacesRequest) (*provider.ListStorageSpacesResponse, error) {
@@ -141,7 +153,7 @@ func (s *svc) ListStorageSpaces(ctx context.Context, req *provider.ListStorageSp
 
 	spaceRef := &provider.Reference{}
 	spaceRef.StorageId, spaceRef.NodeId = splitSpaceID(id.OpaqueId)
-	c, err := s.find(ctx, spaceRef)
+	c, _, err := s.find(ctx, spaceRef)
 	if err != nil {
 		return &provider.ListStorageSpacesResponse{
 			Status: status.NewStatusFromErrType(ctx, "error finding path", err),
@@ -161,7 +173,7 @@ func (s *svc) ListStorageSpaces(ctx context.Context, req *provider.ListStorageSp
 func (s *svc) UpdateStorageSpace(ctx context.Context, req *provider.UpdateStorageSpaceRequest) (*provider.UpdateStorageSpaceResponse, error) {
 	log := appctx.GetLogger(ctx)
 	// TODO: needs to be fixed
-	c, err := s.find(ctx, req.StorageSpace.Root)
+	c, _, err := s.find(ctx, req.StorageSpace.Root)
 	if err != nil {
 		return &provider.UpdateStorageSpaceResponse{
 			Status: status.NewStatusFromErrType(ctx, "error finding ID", err),
@@ -181,7 +193,7 @@ func (s *svc) UpdateStorageSpace(ctx context.Context, req *provider.UpdateStorag
 func (s *svc) DeleteStorageSpace(ctx context.Context, req *provider.DeleteStorageSpaceRequest) (*provider.DeleteStorageSpaceResponse, error) {
 	log := appctx.GetLogger(ctx)
 	// TODO: needs to be fixed
-	c, err := s.find(ctx, &provider.Reference{
+	c, _, err := s.find(ctx, &provider.Reference{
 		StorageId: req.Id.OpaqueId, // FIXME @butonic REFERENCE the StorageSpaceId is a storageid + a nodeid
 	})
 	if err != nil {
@@ -376,12 +388,13 @@ func (s *svc) InitiateFileDownload(ctx context.Context, req *provider.InitiateFi
 
 func (s *svc) initiateFileDownload(ctx context.Context, req *provider.InitiateFileDownloadRequest) (*gateway.InitiateFileDownloadResponse, error) {
 	// TODO(ishank011): enable downloading references spread across storage providers, eg. /eos
-	c, err := s.find(ctx, req.Ref)
+	c, r, err := s.find(ctx, req.Ref)
 	if err != nil {
 		return &gateway.InitiateFileDownloadResponse{
 			Status: status.NewStatusFromErrType(ctx, "error initiating download ref="+req.Ref.String(), err),
 		}, nil
 	}
+	req.Ref = r
 
 	storageRes, err := c.InitiateFileDownload(ctx, req)
 	if err != nil {
@@ -574,12 +587,13 @@ func (s *svc) InitiateFileUpload(ctx context.Context, req *provider.InitiateFile
 }
 
 func (s *svc) initiateFileUpload(ctx context.Context, req *provider.InitiateFileUploadRequest) (*gateway.InitiateFileUploadResponse, error) {
-	c, err := s.find(ctx, req.Ref)
+	c, r, err := s.find(ctx, req.Ref)
 	if err != nil {
 		return &gateway.InitiateFileUploadResponse{
 			Status: status.NewStatusFromErrType(ctx, "initiateFileUpload ref="+req.Ref.String(), err),
 		}, nil
 	}
+	req.Ref = r
 
 	storageRes, err := c.InitiateFileUpload(ctx, req)
 	if err != nil {
@@ -633,7 +647,7 @@ func (s *svc) initiateFileUpload(ctx context.Context, req *provider.InitiateFile
 
 func (s *svc) GetPath(ctx context.Context, req *provider.GetPathRequest) (*provider.GetPathResponse, error) {
 	statReq := &provider.StatRequest{Ref: req.Ref}
-	statRes, err := s.stat(ctx, statReq)
+	statRes, err := s.stat(ctx, statReq) // why stat? why not GetPath?
 	if err != nil {
 		err = errors.Wrap(err, "gateway: error stating ref:"+statReq.Ref.String())
 		return nil, err
@@ -647,7 +661,7 @@ func (s *svc) GetPath(ctx context.Context, req *provider.GetPathRequest) (*provi
 
 	return &provider.GetPathResponse{
 		Status: statRes.Status,
-		Ref:    statRes.GetInfo().GetId(),
+		Path:   statRes.GetInfo().GetPath(),
 	}, nil
 }
 
@@ -725,12 +739,13 @@ func (s *svc) CreateContainer(ctx context.Context, req *provider.CreateContainer
 }
 
 func (s *svc) createContainer(ctx context.Context, req *provider.CreateContainerRequest) (*provider.CreateContainerResponse, error) {
-	c, err := s.find(ctx, req.Ref)
+	c, r, err := s.find(ctx, req.Ref)
 	if err != nil {
 		return &provider.CreateContainerResponse{
 			Status: status.NewStatusFromErrType(ctx, "createContainer ref="+req.Ref.String(), err),
 		}, nil
 	}
+	req.Ref = r
 
 	res, err := c.CreateContainer(ctx, req)
 	if err != nil {
@@ -828,12 +843,13 @@ func (s *svc) Delete(ctx context.Context, req *provider.DeleteRequest) (*provide
 
 func (s *svc) delete(ctx context.Context, req *provider.DeleteRequest) (*provider.DeleteResponse, error) {
 	// TODO(ishank011): enable deleting references spread across storage providers, eg. /eos
-	c, err := s.find(ctx, req.Ref)
+	c, r, err := s.find(ctx, req.Ref)
 	if err != nil {
 		return &provider.DeleteResponse{
 			Status: status.NewStatusFromErrType(ctx, "delete ref="+req.Ref.String(), err),
 		}, nil
 	}
+	req.Ref = r
 
 	res, err := c.Delete(ctx, req)
 	if err != nil {
@@ -970,12 +986,13 @@ func (s *svc) move(ctx context.Context, req *provider.MoveRequest) (*provider.Mo
 
 func (s *svc) SetArbitraryMetadata(ctx context.Context, req *provider.SetArbitraryMetadataRequest) (*provider.SetArbitraryMetadataResponse, error) {
 	// TODO(ishank011): enable for references spread across storage providers, eg. /eos
-	c, err := s.find(ctx, req.Ref)
+	c, r, err := s.find(ctx, req.Ref)
 	if err != nil {
 		return &provider.SetArbitraryMetadataResponse{
 			Status: status.NewStatusFromErrType(ctx, "SetArbitraryMetadata ref="+req.Ref.String(), err),
 		}, nil
 	}
+	req.Ref = r
 
 	res, err := c.SetArbitraryMetadata(ctx, req)
 	if err != nil {
@@ -987,12 +1004,13 @@ func (s *svc) SetArbitraryMetadata(ctx context.Context, req *provider.SetArbitra
 
 func (s *svc) UnsetArbitraryMetadata(ctx context.Context, req *provider.UnsetArbitraryMetadataRequest) (*provider.UnsetArbitraryMetadataResponse, error) {
 	// TODO(ishank011): enable for references spread across storage providers, eg. /eos
-	c, err := s.find(ctx, req.Ref)
+	c, r, err := s.find(ctx, req.Ref)
 	if err != nil {
 		return &provider.UnsetArbitraryMetadataResponse{
 			Status: status.NewStatusFromErrType(ctx, "UnsetArbitraryMetadata ref="+req.Ref.String(), err),
 		}, nil
 	}
+	req.Ref = r
 
 	res, err := c.UnsetArbitraryMetadata(ctx, req)
 	if err != nil {
@@ -1101,20 +1119,22 @@ func (s *svc) stat(ctx context.Context, req *provider.StatRequest) (*provider.St
 		}, nil
 	}
 
-	resPath := req.Ref.GetPath()
 	// do we have an exact match for the provider?
-	if len(providers) == 1 && (resPath == "" || strings.HasPrefix(resPath, providers[0].ProviderPath)) {
+	if len(providers) == 1 && (req.Ref.Path == "" || strings.HasPrefix(req.Ref.Path, providers[0].ProviderPath)) {
 		c, err := s.getStorageProviderClient(ctx, providers[0])
 		if err != nil {
 			return &provider.StatResponse{
 				Status: status.NewInternal(ctx, err, "error connecting to storage provider="+providers[0].Address),
 			}, nil
 		}
+		if isPathReference(req.Ref) {
+			req.Ref.Path = path.Join("/", strings.TrimPrefix(req.Ref.Path, providers[0].ProviderPath))
+		}
 		rsp, err := c.Stat(ctx, req)
 		if err != nil || rsp.Status.Code != rpc.Code_CODE_OK {
 			return rsp, err
 		}
-		if !isStorageSpaceReference(req.Ref) {
+		if isPathReference(req.Ref) {
 			rsp.Info.Path = path.Join(providers[0].ProviderPath, rsp.Info.Path)
 		}
 
@@ -1155,7 +1175,7 @@ func (s *svc) stat(ctx context.Context, req *provider.StatRequest) (*provider.St
 				NodeId:    uuid.New().String(),
 			},
 			Type: provider.ResourceType_RESOURCE_TYPE_CONTAINER,
-			Path: resPath, // TODO this is an absolute path ... we should only return the name
+			Path: req.Ref.Path, // TODO this is an absolute path ... we should only return the name
 			Size: totalSize,
 		},
 	}, nil
@@ -1537,13 +1557,8 @@ func (s *svc) listContainerOnProvider(ctx context.Context, req *provider.ListCon
 		return
 	}
 
-	if !isStorageSpaceReference(req.Ref) {
-		resPath := path.Clean(req.Ref.GetPath())
-		newPath := req.Ref.GetPath()
-		if resPath != "" && !strings.HasPrefix(resPath, p.ProviderPath) {
-			newPath = p.ProviderPath
-		}
-		req.Ref = &provider.Reference{Path: newPath}
+	if isPathReference(req.Ref) {
+		req.Ref = &provider.Reference{Path: path.Join("/", strings.TrimPrefix(req.Ref.Path, p.ProviderPath))}
 	}
 
 	r, err := c.ListContainer(ctx, req)
@@ -1552,7 +1567,7 @@ func (s *svc) listContainerOnProvider(ctx context.Context, req *provider.ListCon
 		return
 	}
 
-	if !isStorageSpaceReference(req.Ref) {
+	if isPathReference(req.Ref) {
 		for i := range r.Infos {
 			r.Infos[i].Path = path.Join(p.ProviderPath, r.Infos[i].Path)
 		}
@@ -1636,7 +1651,7 @@ func (s *svc) ListContainer(ctx context.Context, req *provider.ListContainerRequ
 		}
 
 		newReq := &provider.ListContainerRequest{
-			Ref:                   &provider.Reference{Path: ri.Path},
+			Ref:                   ri.Id,
 			ArbitraryMetadataKeys: req.ArbitraryMetadataKeys,
 		}
 		newRes, err := s.listContainer(ctx, newReq)
@@ -1836,12 +1851,13 @@ func (s *svc) CreateSymlink(ctx context.Context, req *provider.CreateSymlinkRequ
 }
 
 func (s *svc) ListFileVersions(ctx context.Context, req *provider.ListFileVersionsRequest) (*provider.ListFileVersionsResponse, error) {
-	c, err := s.find(ctx, req.Ref)
+	c, r, err := s.find(ctx, req.Ref)
 	if err != nil {
 		return &provider.ListFileVersionsResponse{
 			Status: status.NewStatusFromErrType(ctx, "ListFileVersions ref="+req.Ref.String(), err),
 		}, nil
 	}
+	req.Ref = r
 
 	res, err := c.ListFileVersions(ctx, req)
 	if err != nil {
@@ -1852,12 +1868,13 @@ func (s *svc) ListFileVersions(ctx context.Context, req *provider.ListFileVersio
 }
 
 func (s *svc) RestoreFileVersion(ctx context.Context, req *provider.RestoreFileVersionRequest) (*provider.RestoreFileVersionResponse, error) {
-	c, err := s.find(ctx, req.Ref)
+	c, r, err := s.find(ctx, req.Ref)
 	if err != nil {
 		return &provider.RestoreFileVersionResponse{
 			Status: status.NewStatusFromErrType(ctx, "RestoreFileVersion ref="+req.Ref.String(), err),
 		}, nil
 	}
+	req.Ref = r
 
 	res, err := c.RestoreFileVersion(ctx, req)
 	if err != nil {
@@ -1873,12 +1890,13 @@ func (s *svc) ListRecycleStream(_ *gateway.ListRecycleStreamRequest, _ gateway.G
 
 // TODO use the ListRecycleRequest.Ref to only list the trash of a specific storage
 func (s *svc) ListRecycle(ctx context.Context, req *gateway.ListRecycleRequest) (*provider.ListRecycleResponse, error) {
-	c, err := s.find(ctx, req.GetRef())
+	c, r, err := s.find(ctx, req.GetRef())
 	if err != nil {
 		return &provider.ListRecycleResponse{
 			Status: status.NewStatusFromErrType(ctx, "ListFileVersions ref="+req.Ref.String(), err),
 		}, nil
 	}
+	req.Ref = r
 
 	res, err := c.ListRecycle(ctx, &provider.ListRecycleRequest{
 		Opaque: req.Opaque,
@@ -1893,12 +1911,13 @@ func (s *svc) ListRecycle(ctx context.Context, req *gateway.ListRecycleRequest) 
 }
 
 func (s *svc) RestoreRecycleItem(ctx context.Context, req *provider.RestoreRecycleItemRequest) (*provider.RestoreRecycleItemResponse, error) {
-	c, err := s.find(ctx, req.Ref)
+	c, r, err := s.find(ctx, req.Ref)
 	if err != nil {
 		return &provider.RestoreRecycleItemResponse{
 			Status: status.NewStatusFromErrType(ctx, "RestoreRecycleItem ref="+req.Ref.String(), err),
 		}, nil
 	}
+	req.Ref = r
 
 	res, err := c.RestoreRecycleItem(ctx, req)
 	if err != nil {
@@ -1910,12 +1929,13 @@ func (s *svc) RestoreRecycleItem(ctx context.Context, req *provider.RestoreRecyc
 
 func (s *svc) PurgeRecycle(ctx context.Context, req *gateway.PurgeRecycleRequest) (*provider.PurgeRecycleResponse, error) {
 	// lookup storage by treating the key as a path. It has been prefixed with the storage path in ListRecycle
-	c, err := s.find(ctx, req.Ref)
+	c, r, err := s.find(ctx, req.Ref)
 	if err != nil {
 		return &provider.PurgeRecycleResponse{
 			Status: status.NewStatusFromErrType(ctx, "PurgeRecycle ref="+req.Ref.String(), err),
 		}, nil
 	}
+	req.Ref = r
 
 	res, err := c.PurgeRecycle(ctx, &provider.PurgeRecycleRequest{
 		Opaque: req.GetOpaque(),
@@ -1928,12 +1948,13 @@ func (s *svc) PurgeRecycle(ctx context.Context, req *gateway.PurgeRecycleRequest
 }
 
 func (s *svc) GetQuota(ctx context.Context, req *gateway.GetQuotaRequest) (*provider.GetQuotaResponse, error) {
-	c, err := s.find(ctx, req.Ref)
+	c, r, err := s.find(ctx, req.Ref)
 	if err != nil {
 		return &provider.GetQuotaResponse{
 			Status: status.NewStatusFromErrType(ctx, "GetQuota ref="+req.Ref.String(), err),
 		}, nil
 	}
+	req.Ref = r
 
 	res, err := c.GetQuota(ctx, &provider.GetQuotaRequest{
 		Opaque: req.GetOpaque(),
@@ -1945,17 +1966,21 @@ func (s *svc) GetQuota(ctx context.Context, req *gateway.GetQuotaRequest) (*prov
 	return res, nil
 }
 
-func (s *svc) findByPath(ctx context.Context, path string) (provider.ProviderAPIClient, error) {
-	ref := &provider.Reference{Path: path}
-	return s.find(ctx, ref)
-}
-
-func (s *svc) find(ctx context.Context, ref *provider.Reference) (provider.ProviderAPIClient, error) {
+func (s *svc) find(ctx context.Context, ref *provider.Reference) (provider.ProviderAPIClient, *provider.Reference, error) {
 	p, err := s.findProviders(ctx, ref)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return s.getStorageProviderClient(ctx, p[0])
+	c, err := s.getStorageProviderClient(ctx, p[0])
+	// id based references do not need their path trimmed
+	if isIdReference(ref) {
+		return c, ref, err
+	}
+	// trim the mountpoint from the path
+	subtreeReference := &provider.Reference{
+		Path: path.Join("/", strings.TrimPrefix(ref.Path, p[0].ProviderPath)), // absolute paths always start with a /
+	}
+	return c, subtreeReference, err
 }
 
 func (s *svc) getStorageProviderClient(_ context.Context, p *registry.ProviderInfo) (provider.ProviderAPIClient, error) {

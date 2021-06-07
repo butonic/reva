@@ -21,7 +21,6 @@ package shares
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"mime"
@@ -771,7 +770,7 @@ func wrapResourceID(r *provider.Reference) string {
 // - url safe, because the id might be used in a url, eg. the /dav/meta nodes
 // which is why we base64 encode it
 func wrap(sid string, oid string) string {
-	return base64.URLEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", sid, oid)))
+	return fmt.Sprintf("%s!%s", sid, oid)
 }
 
 func (h *Handler) addFileInfo(ctx context.Context, s *conversions.ShareData, info *provider.ResourceInfo) error {
@@ -785,7 +784,7 @@ func (h *Handler) addFileInfo(ctx context.Context, s *conversions.ShareData, inf
 		}
 		s.MimeType = parsedMt
 		// TODO STime:     &types.Timestamp{Seconds: info.Mtime.Seconds, Nanos: info.Mtime.Nanos},
-		s.StorageID = info.Id.StorageId + info.Id.NodeId
+		s.StorageID = info.Id.StorageId + "!" + info.Id.NodeId
 		// TODO Storage: int
 		s.ItemSource = wrapResourceID(info.Id)
 		s.FileSource = s.ItemSource

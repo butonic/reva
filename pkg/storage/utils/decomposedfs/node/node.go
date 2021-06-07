@@ -451,7 +451,7 @@ func (n *Node) AsResourceInfo(ctx context.Context, rp *provider.ResourcePermissi
 
 	ri = &provider.ResourceInfo{
 		Id: &provider.Reference{
-			// FIXME @butonic REFERENCE add storage id
+			// StorageId: is set by the storageprovider code
 			NodeId: n.ID,
 		},
 		Path:          fn,
