@@ -19,6 +19,7 @@
 package utils
 
 import (
+	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -226,4 +227,13 @@ func MakeRelativePath(p string) string {
 		return "."
 	}
 	return "." + p
+}
+
+func SplitStorageSpaceId(ssid string) (storageid, nodeid string, err error) {
+	// query that specific storage provider
+	parts := strings.SplitN(ssid, "!", 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("storage space id must be separated by '!'")
+	}
+	return parts[0], parts[1], nil
 }
