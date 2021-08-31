@@ -462,7 +462,7 @@ func (s *service) Move(ctx context.Context, req *provider.MoveRequest) (*provide
 		}, nil
 	}
 
-	dstStattedShare, err := s.statShare(ctx, reqShare)
+	dstStattedShare, err := s.statShare(ctx, destinationShare)
 	if err != nil {
 		return &provider.MoveResponse{
 			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating the destination share"),

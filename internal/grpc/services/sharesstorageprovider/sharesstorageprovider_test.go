@@ -31,9 +31,10 @@ import (
 	types "github.com/cs3org/go-cs3apis/cs3/types/v1beta1"
 	provider "github.com/cs3org/reva/internal/grpc/services/sharesstorageprovider"
 	mocks "github.com/cs3org/reva/internal/grpc/services/sharesstorageprovider/mocks"
+	ctxpkg "github.com/cs3org/reva/pkg/ctx"
 	"github.com/cs3org/reva/pkg/rgrpc/status"
 	_ "github.com/cs3org/reva/pkg/share/manager/loader"
-	"github.com/cs3org/reva/pkg/user"
+	"github.com/cs3org/reva/pkg/utils"
 	"google.golang.org/grpc"
 
 	. "github.com/onsi/ginkgo"
@@ -51,7 +52,7 @@ var _ = Describe("Sharesstorageprovider", func() {
 				"json": {},
 			},
 		}
-		ctx = user.ContextSetUser(context.Background(), &userpb.User{
+		ctx = ctxpkg.ContextSetUser(context.Background(), &userpb.User{
 			Id: &userpb.UserId{
 				OpaqueId: "alice",
 			},
@@ -85,7 +86,7 @@ var _ = Describe("Sharesstorageprovider", func() {
 			&sprovider.ListContainerResponse{
 				Status: status.NewOK(context.Background()),
 				Infos: []*sprovider.ResourceInfo{
-					&sprovider.ResourceInfo{
+					{
 						Type: sprovider.ResourceType_RESOURCE_TYPE_CONTAINER,
 						Path: "/share1-shareddir/share1-subdir",
 						Id: &sprovider.ResourceId{
@@ -105,7 +106,7 @@ var _ = Describe("Sharesstorageprovider", func() {
 			&sprovider.ListContainerResponse{
 				Status: status.NewOK(context.Background()),
 				Infos: []*sprovider.ResourceInfo{
-					&sprovider.ResourceInfo{
+					{
 						Type: sprovider.ResourceType_RESOURCE_TYPE_CONTAINER,
 						Path: "/share1-shareddir/share1-subdir/share1-subdir-file",
 						Id: &sprovider.ResourceId{
@@ -115,6 +116,16 @@ var _ = Describe("Sharesstorageprovider", func() {
 						Size: 1,
 					},
 				},
+			}, nil)
+
+		gw.On("ListContainer", mock.Anything, &sprovider.ListContainerRequest{
+			Ref: &sprovider.Reference{
+				Path: "/share2-shareddir",
+			},
+		}).Return(
+			&sprovider.ListContainerResponse{
+				Status: status.NewOK(context.Background()),
+				Infos:  []*sprovider.ResourceInfo{},
 			}, nil)
 
 		gw.On("Stat", mock.Anything, mock.AnythingOfType("*providerv1beta1.StatRequest")).Return(
@@ -151,6 +162,25 @@ var _ = Describe("Sharesstorageprovider", func() {
 							Size: 20,
 						},
 					}
+				} else if req.Ref.GetPath() == "/share2-shareddir" || utils.ResourceIDEqual(req.Ref.ResourceId, &sprovider.ResourceId{
+					StorageId: "share2-storageid",
+					OpaqueId:  "shareddir",
+				}) {
+					return &sprovider.StatResponse{
+						Status: status.NewOK(context.Background()),
+						Info: &sprovider.ResourceInfo{
+							Type: sprovider.ResourceType_RESOURCE_TYPE_CONTAINER,
+							Path: "/share2-shareddir",
+							Id: &sprovider.ResourceId{
+								StorageId: "share2-storageid",
+								OpaqueId:  "shareddir",
+							},
+							PermissionSet: &sprovider.ResourcePermissions{
+								Stat: true,
+							},
+							Size: 200,
+						},
+					}
 				} else {
 					return &sprovider.StatResponse{
 						Status: status.NewOK(context.Background()),
@@ -164,7 +194,7 @@ var _ = Describe("Sharesstorageprovider", func() {
 							PermissionSet: &sprovider.ResourcePermissions{
 								Stat: true,
 							},
-							Size: 1234,
+							Size: 100,
 						},
 					}
 				}
@@ -202,13 +232,13 @@ var _ = Describe("Sharesstorageprovider", func() {
 			sharesProviderClient.On("ListReceivedShares", mock.Anything, mock.Anything).Return(&collaboration.ListReceivedSharesResponse{
 				Status: status.NewOK(context.Background()),
 				Shares: []*collaboration.ReceivedShare{
-					&collaboration.ReceivedShare{
+					{
 						State: collaboration.ShareState_SHARE_STATE_INVALID,
 					},
-					&collaboration.ReceivedShare{
+					{
 						State: collaboration.ShareState_SHARE_STATE_PENDING,
 					},
-					&collaboration.ReceivedShare{
+					{
 						State: collaboration.ShareState_SHARE_STATE_REJECTED,
 					},
 				},
@@ -225,7 +255,7 @@ var _ = Describe("Sharesstorageprovider", func() {
 			sharesProviderClient.On("ListReceivedShares", mock.Anything, mock.Anything).Return(&collaboration.ListReceivedSharesResponse{
 				Status: status.NewOK(context.Background()),
 				Shares: []*collaboration.ReceivedShare{
-					&collaboration.ReceivedShare{
+					{
 						State: collaboration.ShareState_SHARE_STATE_ACCEPTED,
 						Share: &collaboration.Share{
 							ResourceId: &sprovider.ResourceId{
@@ -234,20 +264,22 @@ var _ = Describe("Sharesstorageprovider", func() {
 							},
 							Permissions: &collaboration.SharePermissions{
 								Permissions: &sprovider.ResourcePermissions{
-									Stat: true,
+									Stat:          true,
+									ListContainer: true,
 								},
 							},
 						},
 					},
-					&collaboration.ReceivedShare{
+					{
 						State: collaboration.ShareState_SHARE_STATE_ACCEPTED,
 						Share: &collaboration.Share{
 							ResourceId: &sprovider.ResourceId{
-								StorageId: "share1-storageid",
+								StorageId: "share2-storageid",
 								OpaqueId:  "shareddir",
 							},
 							Permissions: &collaboration.SharePermissions{
 								Permissions: &sprovider.ResourcePermissions{
+									Stat:          true,
 									ListContainer: true,
 								},
 							},
@@ -264,7 +296,7 @@ var _ = Describe("Sharesstorageprovider", func() {
 				Expect(res).ToNot(BeNil())
 				Expect(res.Info.Type).To(Equal(sprovider.ResourceType_RESOURCE_TYPE_CONTAINER))
 				Expect(res.Info.Path).To(Equal("/shares"))
-				Expect(res.Info.Size).To(Equal(uint64(1234)))
+				Expect(res.Info.Size).To(Equal(uint64(300)))
 			})
 
 			It("stats a shares folder", func() {
@@ -278,14 +310,14 @@ var _ = Describe("Sharesstorageprovider", func() {
 				Expect(res).ToNot(BeNil())
 				Expect(res.Info.Type).To(Equal(sprovider.ResourceType_RESOURCE_TYPE_CONTAINER))
 				Expect(res.Info.Path).To(Equal("/shares/share1-shareddir"))
-				Expect(res.Info.Size).To(Equal(uint64(1234)))
+				Expect(res.Info.Size).To(Equal(uint64(100)))
 			})
 
 			It("merges permissions from multiple shares", func() {
 				sharesProviderClient.On("ListReceivedShares", mock.Anything, mock.Anything).Return(&collaboration.ListReceivedSharesResponse{
 					Status: status.NewOK(context.Background()),
 					Shares: []*collaboration.ReceivedShare{
-						&collaboration.ReceivedShare{
+						{
 							State: collaboration.ShareState_SHARE_STATE_ACCEPTED,
 							Share: &collaboration.Share{
 								ResourceId: &sprovider.ResourceId{
@@ -299,7 +331,7 @@ var _ = Describe("Sharesstorageprovider", func() {
 								},
 							},
 						},
-						&collaboration.ReceivedShare{
+						{
 							State: collaboration.ShareState_SHARE_STATE_ACCEPTED,
 							Share: &collaboration.Share{
 								ResourceId: &sprovider.ResourceId{
@@ -424,7 +456,7 @@ var _ = Describe("Sharesstorageprovider", func() {
 				gw.On("InitiateFileDownload", mock.Anything, mock.Anything).Return(&gateway.InitiateFileDownloadResponse{
 					Status: status.NewOK(ctx),
 					Protocols: []*gateway.FileDownloadProtocol{
-						&gateway.FileDownloadProtocol{
+						{
 							Opaque:           &types.Opaque{},
 							Protocol:         "simple",
 							DownloadEndpoint: "https://localhost:9200/data",
