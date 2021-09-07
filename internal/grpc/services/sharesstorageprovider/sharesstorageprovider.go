@@ -638,7 +638,6 @@ func (s *service) ListContainer(ctx context.Context, req *provider.ListContainer
 		} else if reqShare == "" {
 			stattedShare.Stat.Path = filepath.Join(s.mountPath, filepath.Base(stattedShare.Stat.Path))
 			res.Infos = append(res.Infos, stattedShare.Stat)
-			break
 		}
 	}
 	res.Status = status.NewOK(ctx)

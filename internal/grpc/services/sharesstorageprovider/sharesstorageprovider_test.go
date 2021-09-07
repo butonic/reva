@@ -250,7 +250,7 @@ var _ = Describe("Sharesstorageprovider", func() {
 		})
 	})
 
-	Context("with an accepted share", func() {
+	Context("with two accepted shares", func() {
 		BeforeEach(func() {
 			sharesProviderClient.On("ListReceivedShares", mock.Anything, mock.Anything).Return(&collaboration.ListReceivedSharesResponse{
 				Status: status.NewOK(context.Background()),
@@ -396,10 +396,10 @@ var _ = Describe("Sharesstorageprovider", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(res).ToNot(BeNil())
 				Expect(res.Status.Code).To(Equal(rpc.Code_CODE_OK))
-				Expect(len(res.Infos)).To(Equal(1))
+				Expect(len(res.Infos)).To(Equal(2))
 
-				entry := res.Infos[0]
-				Expect(entry.Path).To(Equal("/shares/share1-shareddir"))
+				paths := []string{res.Infos[0].Path, res.Infos[1].Path}
+				Expect(paths).To(ConsistOf("/shares/share1-shareddir", "/shares/share2-shareddir"))
 			})
 
 			It("traverses into specific shares", func() {
