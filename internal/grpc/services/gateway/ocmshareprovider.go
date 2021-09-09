@@ -224,8 +224,8 @@ func (s *svc) UpdateReceivedOCMShare(ctx context.Context, req *ocm.UpdateReceive
 		return res, nil
 	}
 
-	// we don't commit to storage invalid update fields or empty display names.
-	if req.Field.GetState() == ocm.ShareState_SHARE_STATE_INVALID && req.Field.GetDisplayName() == "" {
+	// we don't commit received shares in state invalid
+	if req.Share.State == ocm.ShareState_SHARE_STATE_INVALID {
 		log.Error().Msg("the update field is invalid, aborting reference manipulation")
 		return res, nil
 
@@ -233,9 +233,15 @@ func (s *svc) UpdateReceivedOCMShare(ctx context.Context, req *ocm.UpdateReceive
 
 	// TODO(labkode): if update field is displayName we need to do a rename on the storage to align
 	// share display name and storage filename.
-	if req.Field.GetState() != ocm.ShareState_SHARE_STATE_INVALID {
-		if req.Field.GetState() == ocm.ShareState_SHARE_STATE_ACCEPTED {
-			getShareReq := &ocm.GetReceivedOCMShareRequest{Ref: req.Ref}
+	if req.Share.State != ocm.ShareState_SHARE_STATE_INVALID {
+		if req.Share.State == ocm.ShareState_SHARE_STATE_ACCEPTED {
+			getShareReq := &ocm.GetReceivedOCMShareRequest{
+				Ref: &ocm.ShareReference{
+					Spec: &ocm.ShareReference_Id{
+						Id: req.Share.Share.Id,
+					},
+				},
+			}
 			getShareRes, err := s.GetReceivedOCMShare(ctx, getShareReq)
 			if err != nil {
 				log.Err(err).Msg("gateway: error calling GetReceivedShare")

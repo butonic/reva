@@ -299,8 +299,8 @@ func (s *svc) UpdateReceivedShare(ctx context.Context, req *collaboration.Update
 		return res, nil
 	}
 
-	// we don't commit to storage invalid update fields or empty display names.
-	if req.Field.GetState() == collaboration.ShareState_SHARE_STATE_INVALID && req.Field.GetDisplayName() == "" {
+	// we don't commit received shares in state invalid
+	if req.Share.State == collaboration.ShareState_SHARE_STATE_INVALID {
 		log.Error().Msg("the update field is invalid, aborting reference manipulation")
 		return res, nil
 
@@ -308,8 +308,8 @@ func (s *svc) UpdateReceivedShare(ctx context.Context, req *collaboration.Update
 
 	// TODO(labkode): if update field is displayName we need to do a rename on the storage to align
 	// share display name and storage filename.
-	if req.Field.GetState() != collaboration.ShareState_SHARE_STATE_INVALID {
-		if req.Field.GetState() == collaboration.ShareState_SHARE_STATE_ACCEPTED {
+	if req.Share.State != collaboration.ShareState_SHARE_STATE_INVALID {
+		if req.Share.State == collaboration.ShareState_SHARE_STATE_ACCEPTED {
 			share := res.Share
 			if share == nil {
 				panic("gateway: error updating a received share: the share is nil")
@@ -321,7 +321,7 @@ func (s *svc) UpdateReceivedShare(ctx context.Context, req *collaboration.Update
 				rsp.Share = share
 			}
 			return rsp, nil
-		} else if req.Field.GetState() == collaboration.ShareState_SHARE_STATE_REJECTED {
+		} else if req.Share.State == collaboration.ShareState_SHARE_STATE_REJECTED {
 			s.removeReference(ctx, res.Share.Share.ResourceId)
 			return res, nil
 		}

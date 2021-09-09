@@ -310,8 +310,8 @@ func (m *manager) getReceived(ctx context.Context, ref *collaboration.ShareRefer
 	return nil, errtypes.NotFound(ref.String())
 }
 
-func (m *manager) UpdateReceivedShare(ctx context.Context, share *collaboration.ReceivedShare, fieldMask *field_mask.FieldMask) (*collaboration.ReceivedShare, error) {
-	rs, err := m.getReceived(ctx, &collaboration.ShareReference{Spec: &collaboration.ShareReference_Id{Id: share.Share.Id}})
+func (m *manager) UpdateReceivedShare(ctx context.Context, receivedShare *collaboration.ReceivedShare, fieldMask *field_mask.FieldMask) (*collaboration.ReceivedShare, error) {
+	rs, err := m.getReceived(ctx, &collaboration.ShareReference{Spec: &collaboration.ShareReference_Id{Id: receivedShare.Share.Id}})
 	if err != nil {
 		return nil, err
 	}
@@ -323,9 +323,9 @@ func (m *manager) UpdateReceivedShare(ctx context.Context, share *collaboration.
 	for i := range fieldMask.Paths {
 		switch fieldMask.Paths[i] {
 		case "state":
-			rs.State = share.State
+			rs.State = receivedShare.State
 		case "mount_point":
-			rs.MountPoint = share.MountPoint
+			rs.MountPoint = receivedShare.MountPoint
 		default:
 			return nil, errtypes.NotSupported("updating " + fieldMask.Paths[i] + " is not supported")
 		}
