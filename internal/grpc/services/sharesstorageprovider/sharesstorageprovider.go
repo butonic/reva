@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	gstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	gateway "github.com/cs3org/go-cs3apis/cs3/gateway/v1beta1"
 	rpc "github.com/cs3org/go-cs3apis/cs3/rpc/v1beta1"
@@ -854,18 +855,11 @@ func (s *service) rejectReceivedShare(ctx context.Context, share string) error {
 		return err
 	}
 
-	ref := &collaboration.ShareReference{
-		Spec: &collaboration.ShareReference_Id{
-			Id: stattedShare.ReceivedShare.Share.Id,
-		},
-	}
+	stattedShare.ReceivedShare.State = collaboration.ShareState_SHARE_STATE_REJECTED
+
 	_, err = s.sharesProviderClient.UpdateReceivedShare(ctx, &collaboration.UpdateReceivedShareRequest{
-		Ref: ref,
-		Field: &collaboration.UpdateReceivedShareRequest_UpdateField{
-			Field: &collaboration.UpdateReceivedShareRequest_UpdateField_State{
-				State: collaboration.ShareState_SHARE_STATE_REJECTED,
-			},
-		},
+		Share:      stattedShare.ReceivedShare,
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"state"}},
 	})
 	return err
 }
