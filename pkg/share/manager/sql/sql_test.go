@@ -35,6 +35,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/mock"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -199,7 +200,7 @@ var _ = Describe("SQL manager", func() {
 	})
 
 	Describe("UpdateReceivedShare", func() {
-		It("updates the received share", func() {
+		It("returns an error when no valid field is set in the mask", func() {
 			loginAs(otherUser)
 
 			share, err := mgr.GetReceivedShare(ctx, shareRef)
@@ -207,11 +208,28 @@ var _ = Describe("SQL manager", func() {
 			Expect(share).ToNot(BeNil())
 			Expect(share.State).To(Equal(collaboration.ShareState_SHARE_STATE_ACCEPTED))
 
-			share, err = mgr.UpdateReceivedShare(ctx, shareRef, &collaboration.UpdateReceivedShareRequest_UpdateField{
-				Field: &collaboration.UpdateReceivedShareRequest_UpdateField_State{
-					State: collaboration.ShareState_SHARE_STATE_REJECTED,
-				},
-			})
+			share.State = collaboration.ShareState_SHARE_STATE_REJECTED
+
+			share, err = mgr.UpdateReceivedShare(ctx, share, &fieldmaskpb.FieldMask{Paths: []string{"foo"}})
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("updates the state when the state is set in the mask", func() {
+			loginAs(otherUser)
+
+			share, err := mgr.GetReceivedShare(ctx, shareRef)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(share).ToNot(BeNil())
+			Expect(share.State).To(Equal(collaboration.ShareState_SHARE_STATE_ACCEPTED))
+
+			share.State = collaboration.ShareState_SHARE_STATE_REJECTED
+
+			share, err = mgr.UpdateReceivedShare(ctx, share, &fieldmaskpb.FieldMask{Paths: []string{"mount_point"}})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(share.State).To(Equal(collaboration.ShareState_SHARE_STATE_ACCEPTED))
+
+			share.State = collaboration.ShareState_SHARE_STATE_REJECTED
+			share, err = mgr.UpdateReceivedShare(ctx, share, &fieldmaskpb.FieldMask{Paths: []string{"state"}})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(share.State).To(Equal(collaboration.ShareState_SHARE_STATE_REJECTED))
 
@@ -219,6 +237,31 @@ var _ = Describe("SQL manager", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(share).ToNot(BeNil())
 			Expect(share.State).To(Equal(collaboration.ShareState_SHARE_STATE_REJECTED))
+		})
+
+		It("updates the mount_point when the mount_point is set in the mask", func() {
+			loginAs(otherUser)
+
+			share, err := mgr.GetReceivedShare(ctx, shareRef)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(share).ToNot(BeNil())
+			Expect(share.State).To(Equal(collaboration.ShareState_SHARE_STATE_ACCEPTED))
+
+			share.MountPoint = &provider.Reference{Path: "foo"}
+
+			share, err = mgr.UpdateReceivedShare(ctx, share, &fieldmaskpb.FieldMask{Paths: []string{"state"}})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(share.MountPoint.Path).To(Equal("shared"))
+
+			share.MountPoint = &provider.Reference{Path: "foo"}
+			share, err = mgr.UpdateReceivedShare(ctx, share, &fieldmaskpb.FieldMask{Paths: []string{"mount_point"}})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(share.MountPoint.Path).To(Equal("foo"))
+
+			share, err = mgr.GetReceivedShare(ctx, shareRef)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(share).ToNot(BeNil())
+			Expect(share.MountPoint.Path).To(Equal("foo"))
 		})
 	})
 

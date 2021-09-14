@@ -96,7 +96,7 @@ func loadOrCreate(file string) (*shareModel, error) {
 		return nil, err
 	}
 
-	m := &shareModel{State: j.State}
+	m := &shareModel{State: j.State, MountPoint: j.MountPoint}
 	for _, s := range j.Shares {
 		var decShare collaboration.Share
 		if err = utils.UnmarshalJSONToProtoV1([]byte(s), &decShare); err != nil {
@@ -108,24 +108,29 @@ func loadOrCreate(file string) (*shareModel, error) {
 	if m.State == nil {
 		m.State = map[string]map[string]collaboration.ShareState{}
 	}
+	if m.MountPoint == nil {
+		m.MountPoint = map[string]map[string]*provider.Reference{}
+	}
 
 	m.file = file
 	return m, nil
 }
 
 type shareModel struct {
-	file   string
-	State  map[string]map[string]collaboration.ShareState `json:"state"` // map[username]map[share_id]ShareState
-	Shares []*collaboration.Share                         `json:"shares"`
+	file       string
+	State      map[string]map[string]collaboration.ShareState `json:"state"`       // map[username]map[share_id]ShareState
+	MountPoint map[string]map[string]*provider.Reference      `json:"mount_point"` // map[username]map[share_id]MountPoint
+	Shares     []*collaboration.Share                         `json:"shares"`
 }
 
 type jsonEncoding struct {
-	State  map[string]map[string]collaboration.ShareState `json:"state"` // map[username]map[share_id]ShareState
-	Shares []string                                       `json:"shares"`
+	State      map[string]map[string]collaboration.ShareState `json:"state"`       // map[username]map[share_id]ShareState
+	MountPoint map[string]map[string]*provider.Reference      `json:"mount_point"` // map[username]map[share_id]MountPoint
+	Shares     []string                                       `json:"shares"`
 }
 
 func (m *shareModel) Save() error {
-	j := &jsonEncoding{State: m.State}
+	j := &jsonEncoding{State: m.State, MountPoint: m.MountPoint}
 	for _, s := range m.Shares {
 		encShare, err := utils.MarshalProtoV1ToJSON(s)
 		if err != nil {
@@ -420,6 +425,11 @@ func (m *mgr) convert(ctx context.Context, s *collaboration.Share) *collaboratio
 			rs.State = state
 		}
 	}
+	if v, ok := m.model.MountPoint[user.Id.String()]; ok {
+		if mp, ok := v[s.Id.String()]; ok {
+			rs.MountPoint = mp
+		}
+	}
 	return rs
 }
 
@@ -470,6 +480,7 @@ func (m *mgr) UpdateReceivedShare(ctx context.Context, receivedShare *collaborat
 		}
 	}
 
+	// Persist state
 	if v, ok := m.model.State[user.Id.String()]; ok {
 		v[rs.Share.Id.String()] = rs.State
 		m.model.State[user.Id.String()] = v
@@ -480,11 +491,21 @@ func (m *mgr) UpdateReceivedShare(ctx context.Context, receivedShare *collaborat
 		m.model.State[user.Id.String()] = a
 	}
 
+	// Persist mount point
+	if v, ok := m.model.MountPoint[user.Id.String()]; ok {
+		v[rs.Share.Id.String()] = rs.MountPoint
+		m.model.MountPoint[user.Id.String()] = v
+	} else {
+		a := map[string]*provider.Reference{
+			rs.Share.Id.String(): rs.MountPoint,
+		}
+		m.model.MountPoint[user.Id.String()] = a
+	}
+
 	if err := m.model.Save(); err != nil {
 		err = errors.Wrap(err, "error saving model")
 		return nil, err
 	}
-	// TODO persist mount point
 
 	return rs, nil
 }

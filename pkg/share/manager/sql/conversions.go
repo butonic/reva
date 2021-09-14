@@ -20,6 +20,7 @@ package sql
 
 import (
 	"context"
+	"strings"
 
 	grouppb "github.com/cs3org/go-cs3apis/cs3/identity/group/v1beta1"
 	userpb "github.com/cs3org/go-cs3apis/cs3/identity/user/v1beta1"
@@ -41,7 +42,7 @@ type DBShare struct {
 	UIDOwner     string
 	UIDInitiator string
 	ItemStorage  string
-	ItemSource   string
+	FileSource   string
 	ShareWith    string
 	Token        string
 	Expiration   string
@@ -232,7 +233,7 @@ func (m *mgr) convertToCS3Share(ctx context.Context, s DBShare, storageMountID s
 		},
 		ResourceId: &provider.ResourceId{
 			StorageId: storageMountID + "!" + s.ItemStorage,
-			OpaqueId:  s.ItemSource,
+			OpaqueId:  s.FileSource,
 		},
 		Permissions: &collaboration.SharePermissions{Permissions: permissions},
 		Grantee:     grantee,
@@ -255,7 +256,8 @@ func (m *mgr) convertToCS3ReceivedShare(ctx context.Context, s DBShare, storageM
 		state = intToShareState(s.State)
 	}
 	return &collaboration.ReceivedShare{
-		Share: share,
-		State: state,
+		Share:      share,
+		State:      state,
+		MountPoint: &provider.Reference{Path: strings.TrimLeft(s.FileTarget, "/")},
 	}, nil
 }

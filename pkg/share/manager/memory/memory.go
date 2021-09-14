@@ -47,9 +47,11 @@ func init() {
 // New returns a new manager.
 func New(c map[string]interface{}) (share.Manager, error) {
 	state := map[string]map[*collaboration.ShareId]collaboration.ShareState{}
+	mp := map[string]map[*collaboration.ShareId]*provider.Reference{}
 	return &manager{
-		shareState: state,
-		lock:       &sync.Mutex{},
+		shareState:      state,
+		shareMountPoint: mp,
+		lock:            &sync.Mutex{},
 	}, nil
 }
 
@@ -59,6 +61,9 @@ type manager struct {
 	// shareState contains the share state for a user.
 	// map["alice"]["share-id"]state.
 	shareState map[string]map[*collaboration.ShareId]collaboration.ShareState
+	// shareMountPoint contains the mountpoint of a share for a user.
+	// map["alice"]["share-id"]reference.
+	shareMountPoint map[string]map[*collaboration.ShareId]*provider.Reference
 }
 
 func (m *manager) add(ctx context.Context, s *collaboration.Share) {
@@ -281,6 +286,11 @@ func (m *manager) convert(ctx context.Context, s *collaboration.Share) *collabor
 			rs.State = state
 		}
 	}
+	if v, ok := m.shareMountPoint[user.Id.String()]; ok {
+		if mp, ok := v[s.Id]; ok {
+			rs.MountPoint = mp
+		}
+	}
 	return rs
 }
 
@@ -331,6 +341,7 @@ func (m *manager) UpdateReceivedShare(ctx context.Context, receivedShare *collab
 		}
 	}
 
+	// Persist state
 	if v, ok := m.shareState[user.Id.String()]; ok {
 		v[rs.Share.Id] = rs.State
 		m.shareState[user.Id.String()] = v
@@ -340,7 +351,16 @@ func (m *manager) UpdateReceivedShare(ctx context.Context, receivedShare *collab
 		}
 		m.shareState[user.Id.String()] = a
 	}
-	// TODO persist mount point
+	// Persist mount point
+	if v, ok := m.shareMountPoint[user.Id.String()]; ok {
+		v[rs.Share.Id] = rs.MountPoint
+		m.shareMountPoint[user.Id.String()] = v
+	} else {
+		a := map[*collaboration.ShareId]*provider.Reference{
+			rs.Share.Id: rs.MountPoint,
+		}
+		m.shareMountPoint[user.Id.String()] = a
+	}
 
 	return rs, nil
 }
