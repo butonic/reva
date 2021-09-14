@@ -555,7 +555,9 @@ var _ = Describe("Sharesstorageprovider", func() {
 				}, nil)
 			})
 
-			It("refuses to move a share", func() {
+			It("renames a share", func() {
+				sharesProviderClient.On("UpdateReceivedShare", mock.Anything, mock.Anything).Return(nil, nil)
+
 				req := &sprovider.MoveRequest{
 					Source: &sprovider.Reference{
 						Path: "/shares/share1-shareddir",
@@ -568,7 +570,8 @@ var _ = Describe("Sharesstorageprovider", func() {
 				gw.AssertNotCalled(GinkgoT(), "Move", mock.Anything, mock.Anything)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(res).ToNot(BeNil())
-				Expect(res.Status.Code).To(Equal(rpc.Code_CODE_INVALID_ARGUMENT))
+				Expect(res.Status.Code).To(Equal(rpc.Code_CODE_OK))
+				sharesProviderClient.AssertCalled(GinkgoT(), "UpdateReceivedShare", mock.Anything, mock.Anything)
 			})
 
 			It("refuses to move a file between shares", func() {

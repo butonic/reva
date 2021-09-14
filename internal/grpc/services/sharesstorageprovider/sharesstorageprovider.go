@@ -450,16 +450,28 @@ func (s *service) Move(ctx context.Context, req *provider.MoveRequest) (*provide
 		Interface("destinationShare", destinationShare).
 		Msg("sharesstorageprovider: Got Move request")
 
-	if reqShare == "" || reqPath == "" || destinationPath == "" {
-		return &provider.MoveResponse{
-			Status: status.NewInvalid(ctx, "sharesstorageprovider: can not move top-level share"),
-		}, nil
-	}
-
 	stattedShare, err := s.statShare(ctx, reqShare)
 	if err != nil {
 		return &provider.MoveResponse{
 			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating the source share"),
+		}, nil
+	}
+
+	if reqShare != destinationShare && reqPath == "" {
+		// Change the MountPoint of the share
+		stattedShare.ReceivedShare.MountPoint = &provider.Reference{Path: destinationShare}
+
+		_, err = s.sharesProviderClient.UpdateReceivedShare(ctx, &collaboration.UpdateReceivedShareRequest{
+			Share:      stattedShare.ReceivedShare,
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"state", "mount_point"}},
+		})
+		if err != nil {
+			return &provider.MoveResponse{
+				Status: status.NewInternal(ctx, err, "sharesstorageprovider: can not change mountpoint of share"),
+			}, nil
+		}
+		return &provider.MoveResponse{
+			Status: status.NewOK(ctx),
 		}, nil
 	}
 
@@ -518,7 +530,7 @@ func (s *service) Stat(ctx context.Context, req *provider.StatRequest) (*provide
 		stattedShare, err := s.statShare(ctx, reqShare)
 		if err != nil {
 			return &provider.StatResponse{
-				Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating the source share"),
+				Status: status.NewNotFound(ctx, "sharesstorageprovider: error stating the source share"),
 			}, nil
 		}
 		res := &provider.StatResponse{
@@ -541,7 +553,8 @@ func (s *service) Stat(ctx context.Context, req *provider.StatRequest) (*provide
 			}
 		}
 
-		relPath := strings.SplitAfterN(res.Info.Path, reqShare, 2)[1]
+		origReqShare := filepath.Base(stattedShare.Stat.Path)
+		relPath := strings.SplitAfterN(res.Info.Path, origReqShare, 2)[1]
 		res.Info.Path = filepath.Join(s.mountPath, reqShare, relPath)
 
 		appctx.GetLogger(ctx).Debug().
@@ -619,10 +632,11 @@ func (s *service) ListContainer(ctx context.Context, req *provider.ListContainer
 		// 	continue
 		// }
 
-		if reqShare != "" && name == reqShare {
+		if reqShare != "" && (name == reqShare || (stattedShare.ReceivedShare.MountPoint != nil && stattedShare.ReceivedShare.MountPoint.Path == reqShare)) {
+			origReqShare := filepath.Base(stattedShare.Stat.Path)
 			gwListRes, err := s.gateway.ListContainer(ctx, &provider.ListContainerRequest{
 				Ref: &provider.Reference{
-					Path: filepath.Join(filepath.Dir(stattedShare.Stat.Path), reqShare, reqPath),
+					Path: filepath.Join(filepath.Dir(stattedShare.Stat.Path), origReqShare, reqPath),
 				},
 			})
 			if err != nil {
@@ -631,13 +645,17 @@ func (s *service) ListContainer(ctx context.Context, req *provider.ListContainer
 				}, nil
 			}
 			for _, info := range gwListRes.Infos {
-				relPath := strings.SplitAfterN(info.Path, reqShare, 2)[1]
+				relPath := strings.SplitAfterN(info.Path, origReqShare, 2)[1]
 				info.Path = filepath.Join(s.mountPath, reqShare, relPath)
 				info.PermissionSet = stattedShare.Stat.PermissionSet
 			}
 			return gwListRes, nil
 		} else if reqShare == "" {
-			stattedShare.Stat.Path = filepath.Join(s.mountPath, filepath.Base(stattedShare.Stat.Path))
+			path := stattedShare.Stat.Path
+			if stattedShare.ReceivedShare.MountPoint != nil {
+				path = stattedShare.ReceivedShare.MountPoint.Path
+			}
+			stattedShare.Stat.Path = filepath.Join(s.mountPath, filepath.Base(path))
 			res.Infos = append(res.Infos, stattedShare.Stat)
 		}
 	}
@@ -787,6 +805,13 @@ func (s *service) statShare(ctx context.Context, share string) (*stattedReceived
 		return nil, fmt.Errorf("sharesstorageprovider: error getting received shares")
 	}
 	stattedShare, ok := shares[share]
+	if !ok {
+		for _, ss := range shares {
+			if ss.ReceivedShare.MountPoint != nil && ss.ReceivedShare.MountPoint.Path == share {
+				stattedShare, ok = ss, true
+			}
+		}
+	}
 	if !ok {
 		return nil, fmt.Errorf("sharesstorageprovider: requested share not found")
 	}
