@@ -87,6 +87,19 @@ type stattedReceivedShare struct {
 	AllReceivedShares []*collaboration.ReceivedShare
 }
 
+type shareNotFoundError struct {
+	name string
+}
+
+func (e *shareNotFoundError) Error() string {
+	return "Unkown share:" + e.name
+}
+
+func isShareNotFoundError(e error) bool {
+	_, ok := e.(*shareNotFoundError)
+	return ok
+}
+
 func (s *service) Close() error {
 	return nil
 }
@@ -145,9 +158,15 @@ func (s *service) SetArbitraryMetadata(ctx context.Context, req *provider.SetArb
 
 	stattedShare, err := s.statShare(ctx, reqShare)
 	if err != nil {
-		return &provider.SetArbitraryMetadataResponse{
-			Status: status.NewInternal(ctx, err, "gateway: error stating share"),
-		}, nil
+		if isShareNotFoundError(err) {
+			return &provider.SetArbitraryMetadataResponse{
+				Status: status.NewNotFound(ctx, "sharesstorageprovider: file not found"),
+			}, nil
+		} else {
+			return &provider.SetArbitraryMetadataResponse{
+				Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating share"),
+			}, nil
+		}
 	}
 	gwres, err := s.gateway.SetArbitraryMetadata(ctx, &provider.SetArbitraryMetadataRequest{
 		Ref: &provider.Reference{
@@ -158,7 +177,7 @@ func (s *service) SetArbitraryMetadata(ctx context.Context, req *provider.SetArb
 
 	if err != nil {
 		return &provider.SetArbitraryMetadataResponse{
-			Status: status.NewInternal(ctx, err, "gateway: error calling SetArbitraryMetadata"),
+			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error calling SetArbitraryMetadata"),
 		}, nil
 	}
 
@@ -180,9 +199,15 @@ func (s *service) UnsetArbitraryMetadata(ctx context.Context, req *provider.Unse
 
 	stattedShare, err := s.statShare(ctx, reqShare)
 	if err != nil {
-		return &provider.UnsetArbitraryMetadataResponse{
-			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating share"),
-		}, nil
+		if isShareNotFoundError(err) {
+			return &provider.UnsetArbitraryMetadataResponse{
+				Status: status.NewNotFound(ctx, "sharesstorageprovider: file not found"),
+			}, nil
+		} else {
+			return &provider.UnsetArbitraryMetadataResponse{
+				Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating share"),
+			}, nil
+		}
 	}
 
 	gwres, err := s.gateway.UnsetArbitraryMetadata(ctx, &provider.UnsetArbitraryMetadataRequest{
@@ -216,9 +241,15 @@ func (s *service) InitiateFileDownload(ctx context.Context, req *provider.Initia
 
 	stattedShare, err := s.statShare(ctx, reqShare)
 	if err != nil {
-		return &provider.InitiateFileDownloadResponse{
-			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating the requested share"),
-		}, nil
+		if isShareNotFoundError(err) {
+			return &provider.InitiateFileDownloadResponse{
+				Status: status.NewNotFound(ctx, "sharesstorageprovider: file not found"),
+			}, nil
+		} else {
+			return &provider.InitiateFileDownloadResponse{
+				Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating share"),
+			}, nil
+		}
 	}
 
 	gwres, err := s.gateway.InitiateFileDownload(ctx, &provider.InitiateFileDownloadRequest{
@@ -274,9 +305,15 @@ func (s *service) InitiateFileUpload(ctx context.Context, req *provider.Initiate
 
 	stattedShare, err := s.statShare(ctx, reqShare)
 	if err != nil {
-		return &provider.InitiateFileUploadResponse{
-			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating the requested share"),
-		}, nil
+		if isShareNotFoundError(err) {
+			return &provider.InitiateFileUploadResponse{
+				Status: status.NewNotFound(ctx, "sharesstorageprovider: file not found"),
+			}, nil
+		} else {
+			return &provider.InitiateFileUploadResponse{
+				Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating share"),
+			}, nil
+		}
 	}
 
 	gwres, err := s.gateway.InitiateFileUpload(ctx, &provider.InitiateFileUploadRequest{
@@ -287,7 +324,7 @@ func (s *service) InitiateFileUpload(ctx context.Context, req *provider.Initiate
 	})
 	if err != nil {
 		return &provider.InitiateFileUploadResponse{
-			Status: status.NewInternal(ctx, err, "gateway: error calling InitiateFileDownload"),
+			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error calling InitiateFileDownload"),
 		}, nil
 	}
 	if gwres.Status.Code != rpc.Code_CODE_OK {
@@ -361,9 +398,15 @@ func (s *service) CreateContainer(ctx context.Context, req *provider.CreateConta
 
 	stattedShare, err := s.statShare(ctx, reqShare)
 	if err != nil {
-		return &provider.CreateContainerResponse{
-			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating the requested share"),
-		}, nil
+		if isShareNotFoundError(err) {
+			return &provider.CreateContainerResponse{
+				Status: status.NewNotFound(ctx, "sharesstorageprovider: file not found"),
+			}, nil
+		} else {
+			return &provider.CreateContainerResponse{
+				Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating share"),
+			}, nil
+		}
 	}
 
 	gwres, err := s.gateway.CreateContainer(ctx, &provider.CreateContainerRequest{
@@ -374,7 +417,7 @@ func (s *service) CreateContainer(ctx context.Context, req *provider.CreateConta
 
 	if err != nil {
 		return &provider.CreateContainerResponse{
-			Status: status.NewInternal(ctx, err, "gateway: error calling InitiateFileDownload"),
+			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error calling InitiateFileDownload"),
 		}, nil
 	}
 
@@ -414,9 +457,15 @@ func (s *service) Delete(ctx context.Context, req *provider.DeleteRequest) (*pro
 
 	stattedShare, err := s.statShare(ctx, reqShare)
 	if err != nil {
-		return &provider.DeleteResponse{
-			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating the requested share"),
-		}, nil
+		if isShareNotFoundError(err) {
+			return &provider.DeleteResponse{
+				Status: status.NewNotFound(ctx, "sharesstorageprovider: file not found"),
+			}, nil
+		} else {
+			return &provider.DeleteResponse{
+				Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating share"),
+			}, nil
+		}
 	}
 
 	gwres, err := s.gateway.Delete(ctx, &provider.DeleteRequest{
@@ -427,7 +476,7 @@ func (s *service) Delete(ctx context.Context, req *provider.DeleteRequest) (*pro
 
 	if err != nil {
 		return &provider.DeleteResponse{
-			Status: status.NewInternal(ctx, err, "gateway: error calling Delete"),
+			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error calling Delete"),
 		}, nil
 	}
 
@@ -452,9 +501,15 @@ func (s *service) Move(ctx context.Context, req *provider.MoveRequest) (*provide
 
 	stattedShare, err := s.statShare(ctx, reqShare)
 	if err != nil {
-		return &provider.MoveResponse{
-			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating the source share"),
-		}, nil
+		if isShareNotFoundError(err) {
+			return &provider.MoveResponse{
+				Status: status.NewNotFound(ctx, "sharesstorageprovider: file not found"),
+			}, nil
+		} else {
+			return &provider.MoveResponse{
+				Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating share"),
+			}, nil
+		}
 	}
 
 	if reqShare != destinationShare && reqPath == "" {
@@ -477,9 +532,15 @@ func (s *service) Move(ctx context.Context, req *provider.MoveRequest) (*provide
 
 	dstStattedShare, err := s.statShare(ctx, destinationShare)
 	if err != nil {
-		return &provider.MoveResponse{
-			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating the destination share"),
-		}, nil
+		if isShareNotFoundError(err) {
+			return &provider.MoveResponse{
+				Status: status.NewNotFound(ctx, "sharesstorageprovider: file not found"),
+			}, nil
+		} else {
+			return &provider.MoveResponse{
+				Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating share"),
+			}, nil
+		}
 	}
 
 	if stattedShare.Stat.Id.StorageId != dstStattedShare.Stat.Id.StorageId {
@@ -499,7 +560,7 @@ func (s *service) Move(ctx context.Context, req *provider.MoveRequest) (*provide
 
 	if err != nil {
 		return &provider.MoveResponse{
-			Status: status.NewInternal(ctx, err, "gateway: error calling Move"),
+			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error calling Move"),
 		}, nil
 	}
 
@@ -529,9 +590,15 @@ func (s *service) Stat(ctx context.Context, req *provider.StatRequest) (*provide
 	if reqShare != "" {
 		stattedShare, err := s.statShare(ctx, reqShare)
 		if err != nil {
-			return &provider.StatResponse{
-				Status: status.NewNotFound(ctx, "sharesstorageprovider: error stating the source share"),
-			}, nil
+			if isShareNotFoundError(err) {
+				return &provider.StatResponse{
+					Status: status.NewNotFound(ctx, "sharesstorageprovider: file not found"),
+				}, nil
+			} else {
+				return &provider.StatResponse{
+					Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating share"),
+				}, nil
+			}
 		}
 		res := &provider.StatResponse{
 			Info:   stattedShare.Stat,
@@ -678,9 +745,15 @@ func (s *service) ListFileVersions(ctx context.Context, req *provider.ListFileVe
 
 	stattedShare, err := s.statShare(ctx, reqShare)
 	if err != nil {
-		return &provider.ListFileVersionsResponse{
-			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating the source share"),
-		}, nil
+		if isShareNotFoundError(err) {
+			return &provider.ListFileVersionsResponse{
+				Status: status.NewNotFound(ctx, "sharesstorageprovider: file not found"),
+			}, nil
+		} else {
+			return &provider.ListFileVersionsResponse{
+				Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating share"),
+			}, nil
+		}
 	}
 
 	gwres, err := s.gateway.ListFileVersions(ctx, &provider.ListFileVersionsRequest{
@@ -691,7 +764,7 @@ func (s *service) ListFileVersions(ctx context.Context, req *provider.ListFileVe
 
 	if err != nil {
 		return &provider.ListFileVersionsResponse{
-			Status: status.NewInternal(ctx, err, "gateway: error calling ListFileVersions"),
+			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error calling ListFileVersions"),
 		}, nil
 	}
 
@@ -714,9 +787,15 @@ func (s *service) RestoreFileVersion(ctx context.Context, req *provider.RestoreF
 
 	stattedShare, err := s.statShare(ctx, reqShare)
 	if err != nil {
-		return &provider.RestoreFileVersionResponse{
-			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating the source share"),
-		}, nil
+		if isShareNotFoundError(err) {
+			return &provider.RestoreFileVersionResponse{
+				Status: status.NewNotFound(ctx, "sharesstorageprovider: file not found"),
+			}, nil
+		} else {
+			return &provider.RestoreFileVersionResponse{
+				Status: status.NewInternal(ctx, err, "sharesstorageprovider: error stating share"),
+			}, nil
+		}
 	}
 	gwres, err := s.gateway.RestoreFileVersion(ctx, &provider.RestoreFileVersionRequest{
 		Ref: &provider.Reference{
@@ -726,7 +805,7 @@ func (s *service) RestoreFileVersion(ctx context.Context, req *provider.RestoreF
 
 	if err != nil {
 		return &provider.RestoreFileVersionResponse{
-			Status: status.NewInternal(ctx, err, "gateway: error calling ListFileVersions"),
+			Status: status.NewInternal(ctx, err, "sharesstorageprovider: error calling ListFileVersions"),
 		}, nil
 	}
 
@@ -813,7 +892,7 @@ func (s *service) statShare(ctx context.Context, share string) (*stattedReceived
 		}
 	}
 	if !ok {
-		return nil, fmt.Errorf("sharesstorageprovider: requested share not found")
+		return nil, &shareNotFoundError{name: share}
 	}
 	return stattedShare, nil
 }
