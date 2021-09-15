@@ -25,6 +25,8 @@ import (
 
 	collaborationv1beta1 "github.com/cs3org/go-cs3apis/cs3/sharing/collaboration/v1beta1"
 
+	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
+
 	mock "github.com/stretchr/testify/mock"
 
 	providerv1beta1 "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
@@ -81,13 +83,13 @@ func (_m *Manager) GetShare(ctx context.Context, ref *collaborationv1beta1.Share
 	return r0, r1
 }
 
-// ListReceivedShares provides a mock function with given fields: ctx
-func (_m *Manager) ListReceivedShares(ctx context.Context) ([]*collaborationv1beta1.ReceivedShare, error) {
-	ret := _m.Called(ctx)
+// ListReceivedShares provides a mock function with given fields: ctx, filters
+func (_m *Manager) ListReceivedShares(ctx context.Context, filters []*collaborationv1beta1.Filter) ([]*collaborationv1beta1.ReceivedShare, error) {
+	ret := _m.Called(ctx, filters)
 
 	var r0 []*collaborationv1beta1.ReceivedShare
-	if rf, ok := ret.Get(0).(func(context.Context) []*collaborationv1beta1.ReceivedShare); ok {
-		r0 = rf(ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, []*collaborationv1beta1.Filter) []*collaborationv1beta1.ReceivedShare); ok {
+		r0 = rf(ctx, filters)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*collaborationv1beta1.ReceivedShare)
@@ -95,8 +97,8 @@ func (_m *Manager) ListReceivedShares(ctx context.Context) ([]*collaborationv1be
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
-		r1 = rf(ctx)
+	if rf, ok := ret.Get(1).(func(context.Context, []*collaborationv1beta1.Filter) error); ok {
+		r1 = rf(ctx, filters)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -105,11 +107,11 @@ func (_m *Manager) ListReceivedShares(ctx context.Context) ([]*collaborationv1be
 }
 
 // ListShares provides a mock function with given fields: ctx, filters
-func (_m *Manager) ListShares(ctx context.Context, filters []*collaborationv1beta1.ListSharesRequest_Filter) ([]*collaborationv1beta1.Share, error) {
+func (_m *Manager) ListShares(ctx context.Context, filters []*collaborationv1beta1.Filter) ([]*collaborationv1beta1.Share, error) {
 	ret := _m.Called(ctx, filters)
 
 	var r0 []*collaborationv1beta1.Share
-	if rf, ok := ret.Get(0).(func(context.Context, []*collaborationv1beta1.ListSharesRequest_Filter) []*collaborationv1beta1.Share); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, []*collaborationv1beta1.Filter) []*collaborationv1beta1.Share); ok {
 		r0 = rf(ctx, filters)
 	} else {
 		if ret.Get(0) != nil {
@@ -118,7 +120,7 @@ func (_m *Manager) ListShares(ctx context.Context, filters []*collaborationv1bet
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, []*collaborationv1beta1.ListSharesRequest_Filter) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, []*collaborationv1beta1.Filter) error); ok {
 		r1 = rf(ctx, filters)
 	} else {
 		r1 = ret.Error(1)
@@ -164,13 +166,13 @@ func (_m *Manager) Unshare(ctx context.Context, ref *collaborationv1beta1.ShareR
 	return r0
 }
 
-// UpdateReceivedShare provides a mock function with given fields: ctx, ref, f
-func (_m *Manager) UpdateReceivedShare(ctx context.Context, ref *collaborationv1beta1.ShareReference, f *collaborationv1beta1.UpdateReceivedShareRequest_UpdateField) (*collaborationv1beta1.ReceivedShare, error) {
-	ret := _m.Called(ctx, ref, f)
+// UpdateReceivedShare provides a mock function with given fields: ctx, _a1, fieldMask
+func (_m *Manager) UpdateReceivedShare(ctx context.Context, _a1 *collaborationv1beta1.ReceivedShare, fieldMask *fieldmaskpb.FieldMask) (*collaborationv1beta1.ReceivedShare, error) {
+	ret := _m.Called(ctx, _a1, fieldMask)
 
 	var r0 *collaborationv1beta1.ReceivedShare
-	if rf, ok := ret.Get(0).(func(context.Context, *collaborationv1beta1.ShareReference, *collaborationv1beta1.UpdateReceivedShareRequest_UpdateField) *collaborationv1beta1.ReceivedShare); ok {
-		r0 = rf(ctx, ref, f)
+	if rf, ok := ret.Get(0).(func(context.Context, *collaborationv1beta1.ReceivedShare, *fieldmaskpb.FieldMask) *collaborationv1beta1.ReceivedShare); ok {
+		r0 = rf(ctx, _a1, fieldMask)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*collaborationv1beta1.ReceivedShare)
@@ -178,8 +180,8 @@ func (_m *Manager) UpdateReceivedShare(ctx context.Context, ref *collaborationv1
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, *collaborationv1beta1.ShareReference, *collaborationv1beta1.UpdateReceivedShareRequest_UpdateField) error); ok {
-		r1 = rf(ctx, ref, f)
+	if rf, ok := ret.Get(1).(func(context.Context, *collaborationv1beta1.ReceivedShare, *fieldmaskpb.FieldMask) error); ok {
+		r1 = rf(ctx, _a1, fieldMask)
 	} else {
 		r1 = ret.Error(1)
 	}

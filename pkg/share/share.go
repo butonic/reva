@@ -26,6 +26,8 @@ import (
 	"google.golang.org/genproto/protobuf/field_mask"
 )
 
+//go:generate mockery -name Manager
+
 // Manager is the interface that manipulates shares.
 type Manager interface {
 	// Create a new share in fn with the given acl.
