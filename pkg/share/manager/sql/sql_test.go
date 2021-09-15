@@ -210,7 +210,7 @@ var _ = Describe("SQL manager", func() {
 
 			share.State = collaboration.ShareState_SHARE_STATE_REJECTED
 
-			share, err = mgr.UpdateReceivedShare(ctx, share, &fieldmaskpb.FieldMask{Paths: []string{"foo"}})
+			_, err = mgr.UpdateReceivedShare(ctx, share, &fieldmaskpb.FieldMask{Paths: []string{"foo"}})
 			Expect(err).To(HaveOccurred())
 		})
 
