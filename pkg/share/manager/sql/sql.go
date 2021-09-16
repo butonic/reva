@@ -147,7 +147,7 @@ func (m *mgr) Share(ctx context.Context, md *provider.ResourceInfo, g *collabora
 		fileSource = 0
 	}
 
-	stmtString := "INSERT INTO oc_share (share_type,uid_owner,uid_initiator,item_type,file_source,file_source,permissions,stime,share_with,file_target) VALUES (?,?,?,?,?,?,?,?,?,?)"
+	stmtString := "INSERT INTO oc_share (share_type,uid_owner,uid_initiator,item_type,item_source,file_source,permissions,stime,share_with,file_target) VALUES (?,?,?,?,?,?,?,?,?,?)"
 	stmtValues := []interface{}{shareType, owner, user.Username, itemType, itemSource, fileSource, permissions, now, shareWith, targetPath}
 
 	stmt, err := m.db.Prepare(stmtString)
