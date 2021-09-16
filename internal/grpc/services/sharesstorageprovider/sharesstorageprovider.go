@@ -92,7 +92,7 @@ type shareNotFoundError struct {
 }
 
 func (e *shareNotFoundError) Error() string {
-	return "Unkown share:" + e.name
+	return "Unknown share:" + e.name
 }
 
 func isShareNotFoundError(e error) bool {
