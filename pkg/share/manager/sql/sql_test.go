@@ -46,6 +46,7 @@ var _ = Describe("SQL manager", func() {
 		mgr        share.Manager
 		ctx        context.Context
 		testDbFile *os.File
+		sqldb      *sql.DB
 
 		loginAs = func(user *userpb.User) {
 			ctx = ruser.ContextSetUser(context.Background(), user)
@@ -65,6 +66,7 @@ var _ = Describe("SQL manager", func() {
 				Type:     userpb.UserType_USER_TYPE_PRIMARY,
 			},
 			Username: "einstein",
+			Groups:   []string{"users"},
 		}
 
 		shareRef = &collaboration.ShareReference{Spec: &collaboration.ShareReference_Id{
@@ -72,6 +74,26 @@ var _ = Describe("SQL manager", func() {
 				OpaqueId: "1",
 			},
 		}}
+
+		insertShare = func(shareType int, owner string, grantee string, parent int, source int, fileTarget string, permissions int, accepted int) error {
+			var parentVal interface{}
+			if parent >= 0 {
+				parentVal = parent
+			}
+			stmtString := "INSERT INTO oc_share (share_type,uid_owner,uid_initiator,item_type,item_source,file_source,parent,permissions,stime,share_with,file_target) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+			stmtValues := []interface{}{shareType, owner, owner, "folder", source, source, parentVal, permissions, 1631779730, grantee, fileTarget}
+
+			stmt, err := sqldb.Prepare(stmtString)
+			if err != nil {
+				return err
+			}
+			result, err := stmt.Exec(stmtValues...)
+			if err != nil {
+				return err
+			}
+			_, err = result.LastInsertId()
+			return err
+		}
 	)
 
 	AfterEach(func() {
@@ -91,7 +113,7 @@ var _ = Describe("SQL manager", func() {
 		err = testDbFile.Close()
 		Expect(err).ToNot(HaveOccurred())
 
-		sqldb, err := sql.Open("sqlite3", testDbFile.Name())
+		sqldb, err = sql.Open("sqlite3", testDbFile.Name())
 		Expect(err).ToNot(HaveOccurred())
 
 		userConverter := &mocks.UserConverter{}
@@ -182,6 +204,46 @@ var _ = Describe("SQL manager", func() {
 	})
 
 	Describe("ListReceivedShares", func() {
+		Context("with an accepted group share", func() {
+			It("lists the group share too", func() {
+				loginAs(otherUser)
+				err := insertShare(
+					1,         // group share
+					"admin",   // owner/initiator
+					"users",   // grantee
+					-1,        // parent
+					20,        // source
+					"/shared", // file_target
+					31,        // permissions,
+					0,         // accepted
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				shares, err := mgr.ListReceivedShares(ctx, []*collaboration.Filter{})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(len(shares)).To(Equal(2))
+			})
+
+			It("does not lists group shares named like the user", func() {
+				loginAs(otherUser)
+				err := insertShare(
+					1,          // group share
+					"admin",    // owner/initiator
+					"einstein", // grantee
+					-1,         // parent
+					20,         // source
+					"/shared",  // file_target
+					31,         // permissions,
+					0,          // accepted
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				shares, err := mgr.ListReceivedShares(ctx, []*collaboration.Filter{})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(len(shares)).To(Equal(1))
+			})
+		})
+
 		It("lists received shares", func() {
 			loginAs(otherUser)
 			shares, err := mgr.ListReceivedShares(ctx, []*collaboration.Filter{})
