@@ -326,16 +326,16 @@ func (m *mgr) ListReceivedShares(ctx context.Context, filters []*collaboration.F
 	}
 
 	homeConcat := ""
-	if m.driver == "mysql" { // mysql upsert
+	if m.driver == "mysql" { // mysql concat
 		homeConcat = "storages.id = CONCAT('home::', ts.uid_owner)"
-	} else { // sqlite3 upsert
+	} else { // sqlite3 concat
 		homeConcat = "storages.id = 'home::' || ts.uid_owner"
 	}
 	query := "select coalesce(uid_owner, '') as uid_owner, coalesce(uid_initiator, '') as uid_initiator, coalesce(share_with, '') as share_with, coalesce(file_source, '') as file_source, file_target, ts.id, stime, permissions, share_type, accepted, storages.numeric_id FROM oc_share ts LEFT JOIN oc_storages storages ON " + homeConcat + " WHERE (uid_owner != ? AND uid_initiator != ?) "
 	if len(user.Groups) > 0 {
-		query += "AND (share_with=? OR share_with in (?" + strings.Repeat(",?", len(user.Groups)-1) + "))"
+		query += "AND ((share_type = 0 AND share_with=?) OR (share_type = 1 AND share_with in (?" + strings.Repeat(",?", len(user.Groups)-1) + ")))"
 	} else {
-		query += "AND (share_with=?)"
+		query += "AND (share_type = 0 AND share_with=?)"
 	}
 
 	rows, err := m.db.Query(query, params...)
