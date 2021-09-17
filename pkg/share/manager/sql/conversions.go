@@ -53,6 +53,7 @@ type DBShare struct {
 	FileTarget   string
 	RejectedBy   string
 	State        int
+	Parent       int
 }
 
 // UserConverter describes an interface for converting user ids to names and back

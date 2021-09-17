@@ -331,12 +331,23 @@ func (m *mgr) ListReceivedShares(ctx context.Context, filters []*collaboration.F
 	} else { // sqlite3 concat
 		homeConcat = "storages.id = 'home::' || ts.uid_owner"
 	}
-	query := "select coalesce(uid_owner, '') as uid_owner, coalesce(uid_initiator, '') as uid_initiator, coalesce(share_with, '') as share_with, coalesce(file_source, '') as file_source, file_target, ts.id, stime, permissions, share_type, accepted, storages.numeric_id FROM oc_share ts LEFT JOIN oc_storages storages ON " + homeConcat + " WHERE (uid_owner != ? AND uid_initiator != ?) "
+	userSelect := ""
 	if len(user.Groups) > 0 {
-		query += "AND ((share_type = 0 AND share_with=?) OR (share_type = 1 AND share_with in (?" + strings.Repeat(",?", len(user.Groups)-1) + ")))"
+		userSelect = "AND ((share_type != 1 AND share_with=?) OR (share_type = 1 AND share_with in (?" + strings.Repeat(",?", len(user.Groups)-1) + ")))"
 	} else {
-		query += "AND (share_type = 0 AND share_with=?)"
+		userSelect = "AND (share_type != 1 AND share_with=?)"
 	}
+	query := `
+	WITH results AS
+		(
+			SELECT
+				COALESCE(uid_owner, '') AS uid_owner, COALESCE(uid_initiator, '') AS uid_initiator, COALESCE(share_with, '')
+				AS share_with, COALESCE(file_source, '') AS file_source, file_target, ts.id, stime, permissions, share_type, accepted,
+				storages.numeric_id, COALESCE(parent, -1) AS parent FROM oc_share ts
+			LEFT JOIN oc_storages storages ON ` + homeConcat + `
+			WHERE (uid_owner != ? AND uid_initiator != ?) ` + userSelect + `
+		)
+	SELECT r.* from results r LEFT JOIN results r2 ON r.id = r2.parent WHERE r2.parent IS NULL;`
 
 	rows, err := m.db.Query(query, params...)
 	if err != nil {
@@ -347,7 +358,7 @@ func (m *mgr) ListReceivedShares(ctx context.Context, filters []*collaboration.F
 	var s DBShare
 	shares := []*collaboration.ReceivedShare{}
 	for rows.Next() {
-		if err := rows.Scan(&s.UIDOwner, &s.UIDInitiator, &s.ShareWith, &s.FileSource, &s.FileTarget, &s.ID, &s.STime, &s.Permissions, &s.ShareType, &s.State, &s.ItemStorage); err != nil {
+		if err := rows.Scan(&s.UIDOwner, &s.UIDInitiator, &s.ShareWith, &s.FileSource, &s.FileTarget, &s.ID, &s.STime, &s.Permissions, &s.ShareType, &s.State, &s.ItemStorage, &s.Parent); err != nil {
 			continue
 		}
 		share, err := m.convertToCS3ReceivedShare(ctx, s, m.storageMountID)
