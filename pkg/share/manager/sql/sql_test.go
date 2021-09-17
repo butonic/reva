@@ -207,7 +207,7 @@ var _ = Describe("SQL manager", func() {
 		Context("with a pending group share (non-autoaccept) and an accepted child share", func() {
 			It("only returns the child share", func() {
 				loginAs(otherUser)
-				parentId, err := insertShare(
+				parentID, err := insertShare(
 					1,         // group share
 					"admin",   // owner/initiator
 					"users",   // grantee
@@ -222,7 +222,7 @@ var _ = Describe("SQL manager", func() {
 					2,          // group child share
 					"admin",    // owner/initiator
 					"einstein", // grantee
-					parentId,   // parent
+					parentID,   // parent
 					20,         // source
 					"/shared",  // file_target
 					31,         // permissions,
