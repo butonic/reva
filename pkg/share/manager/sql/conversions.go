@@ -141,7 +141,7 @@ func (m *mgr) extractGrantee(ctx context.Context, t int, g string) (*provider.Gr
 		}
 		grantee.Type = provider.GranteeType_GRANTEE_TYPE_USER
 		grantee.Id = &provider.Grantee_UserId{UserId: userid}
-	case 1:
+	case 1, 2:
 		grantee.Type = provider.GranteeType_GRANTEE_TYPE_GROUP
 		grantee.Id = &provider.Grantee_GroupId{GroupId: extractGroupID(g)}
 	default:

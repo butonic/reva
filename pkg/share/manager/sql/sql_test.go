@@ -23,6 +23,7 @@ import (
 	"database/sql"
 	"io/ioutil"
 	"os"
+	"strconv"
 
 	user "github.com/cs3org/go-cs3apis/cs3/identity/user/v1beta1"
 	userpb "github.com/cs3org/go-cs3apis/cs3/identity/user/v1beta1"
@@ -68,6 +69,15 @@ var _ = Describe("SQL manager", func() {
 			Username: "einstein",
 			Groups:   []string{"users"},
 		}
+		yetAnotherUser = &userpb.User{
+			Id: &userpb.UserId{
+				Idp:      "idp",
+				OpaqueId: "userid2",
+				Type:     userpb.UserType_USER_TYPE_PRIMARY,
+			},
+			Username: "marie",
+			Groups:   []string{"users"},
+		}
 
 		shareRef = &collaboration.ShareReference{Spec: &collaboration.ShareReference_Id{
 			Id: &collaboration.ShareId{
@@ -80,8 +90,8 @@ var _ = Describe("SQL manager", func() {
 			if parent >= 0 {
 				parentVal = parent
 			}
-			stmtString := "INSERT INTO oc_share (share_type,uid_owner,uid_initiator,item_type,item_source,file_source,parent,permissions,stime,share_with,file_target) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
-			stmtValues := []interface{}{shareType, owner, owner, "folder", source, source, parentVal, permissions, 1631779730, grantee, fileTarget}
+			stmtString := "INSERT INTO oc_share (share_type,uid_owner,uid_initiator,item_type,item_source,file_source,parent,permissions,stime,share_with,file_target,accepted) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
+			stmtValues := []interface{}{shareType, owner, owner, "folder", source, source, parentVal, permissions, 1631779730, grantee, fileTarget, accepted}
 
 			stmt, err := sqldb.Prepare(stmtString)
 			if err != nil {
@@ -205,34 +215,40 @@ var _ = Describe("SQL manager", func() {
 
 	Describe("ListReceivedShares", func() {
 		Context("with a pending group share (non-autoaccept) and an accepted child share", func() {
-			It("only returns the child share", func() {
+			It("only returns one share (of type group share)", func() {
 				loginAs(otherUser)
 				parentID, err := insertShare(
-					1,         // group share
-					"admin",   // owner/initiator
-					"users",   // grantee
-					-1,        // parent
-					20,        // source
-					"/shared", // file_target
-					31,        // permissions,
-					0,         // accepted
+					1,              // group share
+					"admin",        // owner/initiator
+					"users",        // grantee
+					-1,             // parent
+					20,             // source
+					"/groupshared", // file_target
+					31,             // permissions,
+					0,              // accepted
 				)
 				Expect(err).ToNot(HaveOccurred())
 				_, err = insertShare(
-					2,          // group child share
-					"admin",    // owner/initiator
-					"einstein", // grantee
-					parentID,   // parent
-					20,         // source
-					"/shared",  // file_target
-					31,         // permissions,
-					0,          // accepted
+					2,                // group child share
+					"admin",          // owner/initiator
+					"einstein",       // grantee
+					parentID,         // parent
+					20,               // source
+					"/mygroupshared", // file_target
+					31,               // permissions,
+					0,                // accepted
 				)
 				Expect(err).ToNot(HaveOccurred())
 
 				shares, err := mgr.ListReceivedShares(ctx, []*collaboration.Filter{})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(len(shares)).To(Equal(2))
+				groupShare := shares[1]
+				Expect(groupShare.MountPoint.Path).To(Equal("mygroupshared"))
+				Expect(groupShare.State).To(Equal(collaboration.ShareState_SHARE_STATE_ACCEPTED))
+				Expect(groupShare.Share.Id.OpaqueId).To(Equal(strconv.Itoa(parentID)))
+				Expect(groupShare.Share.Grantee.Type).To(Equal(provider.GranteeType_GRANTEE_TYPE_GROUP))
+				Expect(groupShare.Share.Grantee.GetGroupId().OpaqueId).To(Equal("users"))
 			})
 		})
 
@@ -257,6 +273,42 @@ var _ = Describe("SQL manager", func() {
 				groupShare := shares[1]
 				Expect(groupShare.MountPoint.Path).To(Equal("shared"))
 				Expect(groupShare.State).To(Equal(collaboration.ShareState_SHARE_STATE_ACCEPTED))
+				Expect(groupShare.Share.Grantee.Type).To(Equal(provider.GranteeType_GRANTEE_TYPE_GROUP))
+			})
+
+			It("lists the child share information if the user changed the mountpoint", func() {
+				loginAs(otherUser)
+				parentID, err := insertShare(
+					1,              // group share
+					"admin",        // owner/initiator
+					"users",        // grantee
+					-1,             // parent
+					20,             // source
+					"/groupshared", // file_target
+					31,             // permissions,
+					1,              // accepted
+				)
+				Expect(err).ToNot(HaveOccurred())
+				_, err = insertShare(
+					2,                // group child share
+					"admin",          // owner/initiator
+					"einstein",       // grantee
+					parentID,         // parent
+					20,               // source
+					"/mygroupshared", // file_target
+					31,               // permissions,
+					0,                // accepted
+				)
+
+				shares, err := mgr.ListReceivedShares(ctx, []*collaboration.Filter{})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(len(shares)).To(Equal(2))
+				groupShare := shares[1]
+				Expect(groupShare.MountPoint.Path).To(Equal("mygroupshared"))
+				Expect(groupShare.State).To(Equal(collaboration.ShareState_SHARE_STATE_ACCEPTED))
+				Expect(groupShare.Share.Id.OpaqueId).To(Equal(strconv.Itoa(parentID)))
+				Expect(groupShare.Share.Grantee.Type).To(Equal(provider.GranteeType_GRANTEE_TYPE_GROUP))
+				Expect(groupShare.Share.Grantee.GetGroupId().OpaqueId).To(Equal("users"))
 			})
 
 			It("does not lists group shares named like the user", func() {
@@ -359,6 +411,61 @@ var _ = Describe("SQL manager", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(share).ToNot(BeNil())
 			Expect(share.MountPoint.Path).To(Equal("foo"))
+		})
+
+		Context("with a group share", func() {
+			It("updates the child share with the custom information", func() {
+				loginAs(otherUser)
+				parentID, err := insertShare(
+					1,              // group share
+					"admin",        // owner/initiator
+					"users",        // grantee
+					-1,             // parent
+					20,             // source
+					"/groupshared", // file_target
+					31,             // permissions,
+					1,              // accepted
+				)
+				Expect(err).ToNot(HaveOccurred())
+				_, err = insertShare(
+					2,                // group child share
+					"admin",          // owner/initiator
+					"einstein",       // grantee
+					parentID,         // parent
+					20,               // source
+					"/mygroupshared", // file_target
+					31,               // permissions,
+					0,                // accepted
+				)
+				parentRef := &collaboration.ShareReference{Spec: &collaboration.ShareReference_Id{
+					Id: &collaboration.ShareId{
+						OpaqueId: strconv.Itoa(parentID),
+					},
+				}}
+
+				share, err := mgr.GetReceivedShare(ctx, parentRef)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(share).ToNot(BeNil())
+				Expect(share.State).To(Equal(collaboration.ShareState_SHARE_STATE_ACCEPTED))
+
+				share.MountPoint = &provider.Reference{Path: "foo"}
+
+				By("overriding the child share information for the current user")
+				share, err = mgr.UpdateReceivedShare(ctx, share, &fieldmaskpb.FieldMask{Paths: []string{"mount_point"}})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(share.MountPoint.Path).To(Equal("foo"))
+
+				share, err = mgr.GetReceivedShare(ctx, parentRef)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(share).ToNot(BeNil())
+				Expect(share.MountPoint.Path).To(Equal("foo"))
+
+				By("not overriding the parent share information")
+				loginAs(yetAnotherUser)
+				share, err = mgr.GetReceivedShare(ctx, parentRef)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(share.MountPoint.Path).To(Equal("groupshared"))
+			})
 		})
 	})
 

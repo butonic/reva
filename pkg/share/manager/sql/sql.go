@@ -327,9 +327,9 @@ func (m *mgr) ListReceivedShares(ctx context.Context, filters []*collaboration.F
 
 	homeConcat := ""
 	if m.driver == "mysql" { // mysql concat
-		homeConcat = "storages.id = CONCAT('home::', ts.uid_owner)"
+		homeConcat = "storages.id = CONCAT('home::', s.uid_owner)"
 	} else { // sqlite3 concat
-		homeConcat = "storages.id = 'home::' || ts.uid_owner"
+		homeConcat = "storages.id = 'home::' || s.uid_owner"
 	}
 	userSelect := ""
 	if len(user.Groups) > 0 {
@@ -340,14 +340,13 @@ func (m *mgr) ListReceivedShares(ctx context.Context, filters []*collaboration.F
 	query := `
 	WITH results AS
 		(
-			SELECT
-				COALESCE(uid_owner, '') AS uid_owner, COALESCE(uid_initiator, '') AS uid_initiator, COALESCE(share_with, '')
-				AS share_with, COALESCE(file_source, '') AS file_source, file_target, ts.id, stime, permissions, share_type, accepted,
-				storages.numeric_id, COALESCE(parent, -1) AS parent FROM oc_share ts
+			SELECT s.*, storages.numeric_id FROM oc_share s
 			LEFT JOIN oc_storages storages ON ` + homeConcat + `
 			WHERE (uid_owner != ? AND uid_initiator != ?) ` + userSelect + `
 		)
-	SELECT r.* from results r LEFT JOIN results r2 ON r.id = r2.parent WHERE r2.parent IS NULL;`
+	SELECT COALESCE(r.uid_owner, '') AS uid_owner, COALESCE(r.uid_initiator, '') AS uid_initiator, COALESCE(r.share_with, '')
+	AS share_with, COALESCE(r.file_source, '') AS file_source, COALESCE(r2.file_target, r.file_target), r.id, r.stime, r.permissions, r.share_type, COALESCE(r2.accepted, r.accepted),
+	r.numeric_id, COALESCE(r.parent, -1) AS parent FROM results r LEFT JOIN results r2 ON r.id = r2.parent WHERE r.parent IS NULL;`
 
 	rows, err := m.db.Query(query, params...)
 	if err != nil {
@@ -426,16 +425,33 @@ func (m *mgr) UpdateReceivedShare(ctx context.Context, receivedShare *collaborat
 		return nil, fmt.Errorf("no valid field provided in the fieldmask")
 	}
 
-	query := "update oc_share set "
-	query += strings.Join(fields, ",")
-	query += " where id=?"
-	params = append(params, rs.Share.Id.OpaqueId)
+	updateReceivedShare := func(column string) error {
+		query := "update oc_share set "
+		query += strings.Join(fields, ",")
+		query += fmt.Sprintf(" where %s=?", column)
+		queryParams := append(params, rs.Share.Id.OpaqueId)
 
-	stmt, err := m.db.Prepare(query)
-	if err != nil {
-		return nil, err
+		stmt, err := m.db.Prepare(query)
+		if err != nil {
+			return err
+		}
+		res, err := stmt.Exec(queryParams...)
+		if err != nil {
+			return err
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected < 1 {
+			return fmt.Errorf("No rows updated")
+		}
+		return nil
 	}
-	_, err = stmt.Exec(params...)
+	err = updateReceivedShare("parent") // Try to update the child state in case of group shares first
+	if err != nil {
+		err = updateReceivedShare("id")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -482,19 +498,42 @@ func (m *mgr) getReceivedByID(ctx context.Context, id *collaboration.ShareId) (*
 	user := ctxpkg.ContextMustGetUser(ctx)
 	uid := user.Username
 
-	params := []interface{}{id.OpaqueId, uid}
+	params := []interface{}{id.OpaqueId, id.OpaqueId, uid}
 	for _, v := range user.Groups {
 		params = append(params, v)
 	}
 
-	s := DBShare{ID: id.OpaqueId}
-	query := "select coalesce(uid_owner, '') as uid_owner, coalesce(uid_initiator, '') as uid_initiator, coalesce(share_with, '') as share_with, coalesce(file_source, '') as file_source, file_target, stime, permissions, share_type, accepted FROM oc_share ts WHERE ts.id=? "
-	if len(user.Groups) > 0 {
-		query += "AND (share_with=? OR share_with in (?" + strings.Repeat(",?", len(user.Groups)-1) + "))"
-	} else {
-		query += "AND (share_with=?)"
+	homeConcat := ""
+	if m.driver == "mysql" { // mysql concat
+		homeConcat = "storages.id = CONCAT('home::', s.uid_owner)"
+	} else { // sqlite3 concat
+		homeConcat = "storages.id = 'home::' || s.uid_owner"
 	}
-	if err := m.db.QueryRow(query, params...).Scan(&s.UIDOwner, &s.UIDInitiator, &s.ShareWith, &s.FileSource, &s.FileTarget, &s.STime, &s.Permissions, &s.ShareType, &s.State); err != nil {
+	userSelect := ""
+	if len(user.Groups) > 0 {
+		userSelect = "AND ((share_type != 1 AND share_with=?) OR (share_type = 1 AND share_with in (?" + strings.Repeat(",?", len(user.Groups)-1) + ")))"
+	} else {
+		userSelect = "AND (share_type != 1 AND share_with=?)"
+	}
+
+	query := `
+	WITH results AS
+	(
+		SELECT s.*, storages.numeric_id 
+		FROM oc_share s
+		LEFT JOIN oc_storages storages ON ` + homeConcat + `
+		WHERE s.id=? OR s.parent=?` + userSelect + `
+	)
+	SELECT COALESCE(r.uid_owner, '') AS uid_owner, COALESCE(r.uid_initiator, '') AS uid_initiator, COALESCE(r.share_with, '')
+		AS share_with, COALESCE(r.file_source, '') AS file_source, COALESCE(r2.file_target, r.file_target), r.id, r.stime, r.permissions, r.share_type, COALESCE(r2.accepted, r.accepted),
+		r.numeric_id, COALESCE(r.parent, -1) AS parent 
+	FROM results r 
+	LEFT JOIN results r2 ON r.id = r2.parent 
+	WHERE r.parent IS NULL;
+	`
+
+	s := DBShare{}
+	if err := m.db.QueryRow(query, params...).Scan(&s.UIDOwner, &s.UIDInitiator, &s.ShareWith, &s.FileSource, &s.FileTarget, &s.ID, &s.STime, &s.Permissions, &s.ShareType, &s.State, &s.ItemStorage, &s.Parent); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errtypes.NotFound(id.OpaqueId)
 		}
