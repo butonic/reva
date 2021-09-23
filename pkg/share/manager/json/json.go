@@ -410,7 +410,32 @@ func (m *mgr) ListReceivedShares(ctx context.Context, filters []*collaboration.F
 			}
 		}
 	}
-	return rss, nil
+
+	// if there is a mix-up of shares of type group and shares of type user we need to deduplicate them, since it points
+	// to the same resource. Leave the more explicit and hide the more explicit. In this case we hide the group shares
+	// and return the user share to the user.
+	filtered := make([]*collaboration.ReceivedShare, 0)
+
+	for _, s := range rss {
+		filtered = append(filtered, s)
+	}
+
+	for i := range rss {
+		for j := range rss {
+			if rss[i].Share.ResourceId.GetOpaqueId() == rss[j].Share.ResourceId.GetOpaqueId() {
+				if rss[i].Share.GetGrantee().GetType() == provider.GranteeType_GRANTEE_TYPE_GROUP && rss[j].Share.GetGrantee().GetType() == provider.GranteeType_GRANTEE_TYPE_USER {
+					if rss[i].State == rss[j].State {
+						// remove the group share from the results
+						filtered[i] = filtered[len(filtered)-1]
+						filtered[len(filtered)-1] = nil
+						filtered = filtered[:len(filtered)-1]
+					}
+				}
+			}
+		}
+	}
+
+	return filtered, nil
 }
 
 // convert must be called in a lock-controlled block.

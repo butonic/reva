@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"path"
 
+	rtrace "github.com/cs3org/reva/pkg/trace"
+
 	rpc "github.com/cs3org/go-cs3apis/cs3/rpc/v1beta1"
 	collaboration "github.com/cs3org/go-cs3apis/cs3/sharing/collaboration/v1beta1"
 	provider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
@@ -270,7 +272,10 @@ func (s *svc) GetReceivedShare(ctx context.Context, req *collaboration.GetReceiv
 //   1) if received share is mounted: we also do a rename in the storage
 //   2) if received share is not mounted: we only rename in user share provider.
 func (s *svc) UpdateReceivedShare(ctx context.Context, req *collaboration.UpdateReceivedShareRequest) (*collaboration.UpdateReceivedShareResponse, error) {
-	log := appctx.GetLogger(ctx)
+	t := rtrace.Provider.Tracer("reva")
+	ctx, span := t.Start(ctx, "Gateway.UpdateReceivedShare")
+	defer span.End()
+
 	c, err := pool.GetUserShareProviderClient(s.c.UserShareProviderEndpoint)
 	if err != nil {
 		err = errors.Wrap(err, "gateway: error calling GetUserShareProviderClient")
@@ -279,59 +284,7 @@ func (s *svc) UpdateReceivedShare(ctx context.Context, req *collaboration.Update
 		}, nil
 	}
 
-	res, err := c.UpdateReceivedShare(ctx, req)
-	if err != nil {
-		log.Err(err).Msg("gateway: error calling UpdateReceivedShare")
-		return &collaboration.UpdateReceivedShareResponse{
-			Status: &rpc.Status{
-				Code: rpc.Code_CODE_INTERNAL,
-			},
-		}, nil
-	}
-
-	// error failing to update share state.
-	if res.Status.Code != rpc.Code_CODE_OK {
-		return res, nil
-	}
-
-	// if we don't need to create/delete references then we return early.
-	if !s.c.CommitShareToStorageRef {
-		return res, nil
-	}
-
-	// we don't commit received shares in state invalid
-	if req.Share.State == collaboration.ShareState_SHARE_STATE_INVALID {
-		log.Error().Msg("the update field is invalid, aborting reference manipulation")
-		return res, nil
-
-	}
-
-	// TODO(labkode): if update field is displayName we need to do a rename on the storage to align
-	// share display name and storage filename.
-	if req.Share.State != collaboration.ShareState_SHARE_STATE_INVALID {
-		if req.Share.State == collaboration.ShareState_SHARE_STATE_ACCEPTED {
-			share := res.Share
-			if share == nil {
-				panic("gateway: error updating a received share: the share is nil")
-			}
-			createRefStatus := s.createReference(ctx, share.Share.ResourceId)
-			rsp := &collaboration.UpdateReceivedShareResponse{Status: createRefStatus}
-
-			if createRefStatus.Code == rpc.Code_CODE_OK {
-				rsp.Share = share
-			}
-			return rsp, nil
-		} else if req.Share.State == collaboration.ShareState_SHARE_STATE_REJECTED {
-			s.removeReference(ctx, res.Share.Share.ResourceId)
-			return res, nil
-		}
-	}
-
-	// TODO(labkode): implementing updating display name
-	err = errtypes.NotSupported("gateway: update of display name is not yet implemented")
-	return &collaboration.UpdateReceivedShareResponse{
-		Status: status.NewUnimplemented(ctx, err, "error updating received share"),
-	}, nil
+	return c.UpdateReceivedShare(ctx, req)
 }
 
 func (s *svc) removeReference(ctx context.Context, resourceID *provider.ResourceId) *rpc.Status {

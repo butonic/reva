@@ -671,7 +671,7 @@ func (s *service) ListContainer(ctx context.Context, req *provider.ListContainer
 			continue
 		}
 		// gwres, err := s.gateway.Stat(ctx, &provider.StatRequest{
-		// 	Ref: &provider.Reference{
+		// 	Ref: &provider.Reference{f
 		// 		ResourceId: stattedShare.ReceivedShare.Share.ResourceId,
 		// 	},
 		// })
@@ -922,7 +922,7 @@ func (s *service) getReceivedShares(ctx context.Context) (map[string]*stattedRec
 			continue
 		}
 
-		name := filepath.Base(statRes.Info.Path)
+		name := rs.MountPoint.Path
 		if _, ok := ret[name]; !ok {
 			ret[name] = &stattedReceivedShare{
 				ReceivedShare:     rs,

@@ -19,8 +19,13 @@
 package shares
 
 import (
+	"fmt"
 	"net/http"
 	"path"
+	"sort"
+	"strconv"
+
+	provider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
 
 	rpc "github.com/cs3org/go-cs3apis/cs3/rpc/v1beta1"
 	collaboration "github.com/cs3org/go-cs3apis/cs3/sharing/collaboration/v1beta1"
@@ -35,17 +40,112 @@ import (
 
 // AcceptReceivedShare handles Post Requests on /apps/files_sharing/api/v1/shares/{shareid}
 func (h *Handler) AcceptReceivedShare(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	shareID := chi.URLParam(r, "shareid")
-	h.updateReceivedShare(w, r, shareID, false)
+	// todo
+	// 1. find free name to prevent collision
+	// 2.
+
+	client, err := pool.GetGatewayServiceClient(h.gatewayAddr)
+	if err != nil {
+		response.WriteOCSError(w, r, response.MetaServerError.StatusCode, "error getting grpc gateway client", err)
+		return
+	}
+
+	// we need the original share in order to get where in the storage it is mounter to determine the name of
+	// the shared resource.
+	s, err := client.GetShare(ctx, &collaboration.GetShareRequest{
+		Ref: &collaboration.ShareReference{
+			Spec: &collaboration.ShareReference_Id{
+				Id: &collaboration.ShareId{
+					OpaqueId: shareID,
+				}},
+		},
+	})
+	if err != nil {
+		response.WriteOCSError(w, r, response.MetaServerError.StatusCode,
+			fmt.Sprintf("could not get share with ID: `%s`", shareID),
+			err,
+		)
+		return
+	}
+
+	if s.Status.Code != rpc.Code_CODE_OK {
+		if s.Status.Code == rpc.Code_CODE_NOT_FOUND {
+			response.WriteOCSError(w, r, response.MetaNotFound.StatusCode, "not found", nil)
+			return
+		}
+		response.WriteOCSError(w, r, response.MetaServerError.StatusCode, s.GetStatus().GetMessage(), nil)
+		return
+	}
+
+	// get the name of the shared resource
+	sharedResource, err := client.Stat(ctx, &provider.StatRequest{
+		Ref: &provider.Reference{
+			ResourceId: s.Share.GetResourceId(),
+		},
+	})
+	if err != nil {
+		response.WriteOCSError(w, r, response.MetaServerError.StatusCode, "could not get shared resource", err)
+		return
+	}
+
+	if sharedResource.Status.Code != rpc.Code_CODE_OK {
+		if sharedResource.Status.Code == rpc.Code_CODE_NOT_FOUND {
+			response.WriteOCSError(w, r, response.MetaNotFound.StatusCode, "not found", nil)
+			return
+		}
+		response.WriteOCSError(w, r, response.MetaServerError.StatusCode, sharedResource.GetStatus().GetMessage(), nil)
+		return
+	}
+
+	// list received shares
+	// TODO check if there is a span in the context.
+	lrs, err := client.ListReceivedShares(r.Context(), &collaboration.ListReceivedSharesRequest{})
+	if err != nil {
+		response.WriteOCSError(w, r, response.MetaNotFound.StatusCode, "could not accept share", err)
+		return
+	}
+
+	if lrs.Status.Code != rpc.Code_CODE_OK {
+		if lrs.Status.Code == rpc.Code_CODE_NOT_FOUND {
+			response.WriteOCSError(w, r, response.MetaNotFound.StatusCode, "not found", nil)
+			return
+		}
+		response.WriteOCSError(w, r, response.MetaServerError.StatusCode, lrs.GetStatus().GetMessage(), nil)
+		return
+	}
+
+	// we need to sort the received shares by mount point in order to make things easier to evaluate.
+	mountPoints := []string{}
+	for _, share := range lrs.Shares {
+		if share.State == collaboration.ShareState_SHARE_STATE_ACCEPTED {
+			// only when the share is accepted there is a mount point.
+			mountPoints = append(mountPoints, share.MountPoint.Path)
+		}
+	}
+
+	sort.Strings(mountPoints)
+	base := path.Base(sharedResource.GetInfo().GetPath())
+	mount := base
+
+	// now we have a list of shares, we want to iterate over all of them and check for name collisions
+	for i, mp := range mountPoints {
+		if mp == mount {
+			mount = fmt.Sprintf("%s (%s)", base, strconv.Itoa(i+1))
+		}
+	}
+
+	h.updateReceivedShare(w, r, shareID, false, mount)
 }
 
 // RejectReceivedShare handles DELETE Requests on /apps/files_sharing/api/v1/shares/{shareid}
 func (h *Handler) RejectReceivedShare(w http.ResponseWriter, r *http.Request) {
 	shareID := chi.URLParam(r, "shareid")
-	h.updateReceivedShare(w, r, shareID, true)
+	h.updateReceivedShare(w, r, shareID, true, "")
 }
 
-func (h *Handler) updateReceivedShare(w http.ResponseWriter, r *http.Request, shareID string, rejectShare bool) {
+func (h *Handler) updateReceivedShare(w http.ResponseWriter, r *http.Request, shareID string, rejectShare bool, mountPoint string) {
 	ctx := r.Context()
 	logger := appctx.GetLogger(ctx)
 
@@ -55,13 +155,20 @@ func (h *Handler) updateReceivedShare(w http.ResponseWriter, r *http.Request, sh
 		return
 	}
 
+	// we need to add a path to the share
 	shareRequest := &collaboration.UpdateReceivedShareRequest{
-		Share:      &collaboration.ReceivedShare{Share: &collaboration.Share{Id: &collaboration.ShareId{OpaqueId: shareID}}},
+		Share: &collaboration.ReceivedShare{
+			Share: &collaboration.Share{Id: &collaboration.ShareId{OpaqueId: shareID}},
+			MountPoint: &provider.Reference{
+				Path: mountPoint,
+			},
+		},
 		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"state"}},
 	}
 	if rejectShare {
 		shareRequest.Share.State = collaboration.ShareState_SHARE_STATE_REJECTED
 	} else {
+		shareRequest.UpdateMask.Paths = append(shareRequest.UpdateMask.Paths, "mount_point")
 		shareRequest.Share.State = collaboration.ShareState_SHARE_STATE_ACCEPTED
 	}
 
