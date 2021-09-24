@@ -34,6 +34,7 @@ import (
 	"github.com/cs3org/reva/internal/http/services/owncloud/ocs/response"
 	"github.com/cs3org/reva/pkg/appctx"
 	"github.com/cs3org/reva/pkg/rgrpc/todo/pool"
+	"github.com/cs3org/reva/pkg/utils"
 	"github.com/go-chi/chi/v5"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -75,10 +76,10 @@ func (h *Handler) AcceptReceivedShare(w http.ResponseWriter, r *http.Request) {
 
 	// we need to sort the received shares by mount point in order to make things easier to evaluate.
 	var mountPoints []string
-	for _, share := range lrs.Shares {
-		if share.State == collaboration.ShareState_SHARE_STATE_ACCEPTED {
+	for _, s := range lrs.Shares {
+		if s.State == collaboration.ShareState_SHARE_STATE_ACCEPTED && !utils.ResourceIDEqual(s.Share.ResourceId, share.Share.GetResourceId()) {
 			// only when the share is accepted there is a mount point.
-			mountPoints = append(mountPoints, share.MountPoint.Path)
+			mountPoints = append(mountPoints, s.MountPoint.Path)
 		}
 	}
 
