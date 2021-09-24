@@ -19,16 +19,17 @@
 package shares
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"path"
 	"sort"
 	"strconv"
 
-	provider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
-
+	gateway "github.com/cs3org/go-cs3apis/cs3/gateway/v1beta1"
 	rpc "github.com/cs3org/go-cs3apis/cs3/rpc/v1beta1"
 	collaboration "github.com/cs3org/go-cs3apis/cs3/sharing/collaboration/v1beta1"
+	provider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
 	"github.com/cs3org/reva/internal/http/services/owncloud/ocs/conversions"
 	"github.com/cs3org/reva/internal/http/services/owncloud/ocs/response"
 	"github.com/cs3org/reva/pkg/appctx"
@@ -38,13 +39,15 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
+const (
+	// shareID is the id of the share to update. It is present in the request URL.
+	shareID string = "shareid"
+)
+
 // AcceptReceivedShare handles Post Requests on /apps/files_sharing/api/v1/shares/{shareid}
 func (h *Handler) AcceptReceivedShare(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	shareID := chi.URLParam(r, "shareid")
-	// todo
-	// 1. find free name to prevent collision
-	// 2.
+	shareID := chi.URLParam(r, shareID)
 
 	client, err := pool.GetGatewayServiceClient(h.gatewayAddr)
 	if err != nil {
@@ -52,72 +55,26 @@ func (h *Handler) AcceptReceivedShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// we need the original share in order to get where in the storage it is mounter to determine the name of
-	// the shared resource.
-	s, err := client.GetShare(ctx, &collaboration.GetShareRequest{
-		Ref: &collaboration.ShareReference{
-			Spec: &collaboration.ShareReference_Id{
-				Id: &collaboration.ShareId{
-					OpaqueId: shareID,
-				}},
-		},
-	})
-	if err != nil {
-		response.WriteOCSError(w, r, response.MetaServerError.StatusCode,
-			fmt.Sprintf("could not get share with ID: `%s`", shareID),
-			err,
-		)
+	share, ocsResponse := getShareFromID(ctx, client, shareID)
+	if ocsResponse != nil {
+		response.WriteOCSResponse(w, r, *ocsResponse, nil)
 		return
 	}
 
-	if s.Status.Code != rpc.Code_CODE_OK {
-		if s.Status.Code == rpc.Code_CODE_NOT_FOUND {
-			response.WriteOCSError(w, r, response.MetaNotFound.StatusCode, "not found", nil)
-			return
-		}
-		response.WriteOCSError(w, r, response.MetaServerError.StatusCode, s.GetStatus().GetMessage(), nil)
+	sharedResource, ocsResponse := getSharedResource(ctx, client, share)
+	if ocsResponse != nil {
+		response.WriteOCSResponse(w, r, *ocsResponse, nil)
 		return
 	}
 
-	// get the name of the shared resource
-	sharedResource, err := client.Stat(ctx, &provider.StatRequest{
-		Ref: &provider.Reference{
-			ResourceId: s.Share.GetResourceId(),
-		},
-	})
-	if err != nil {
-		response.WriteOCSError(w, r, response.MetaServerError.StatusCode, "could not get shared resource", err)
-		return
-	}
-
-	if sharedResource.Status.Code != rpc.Code_CODE_OK {
-		if sharedResource.Status.Code == rpc.Code_CODE_NOT_FOUND {
-			response.WriteOCSError(w, r, response.MetaNotFound.StatusCode, "not found", nil)
-			return
-		}
-		response.WriteOCSError(w, r, response.MetaServerError.StatusCode, sharedResource.GetStatus().GetMessage(), nil)
-		return
-	}
-
-	// list received shares
-	// TODO check if there is a span in the context.
-	lrs, err := client.ListReceivedShares(r.Context(), &collaboration.ListReceivedSharesRequest{})
-	if err != nil {
-		response.WriteOCSError(w, r, response.MetaNotFound.StatusCode, "could not accept share", err)
-		return
-	}
-
-	if lrs.Status.Code != rpc.Code_CODE_OK {
-		if lrs.Status.Code == rpc.Code_CODE_NOT_FOUND {
-			response.WriteOCSError(w, r, response.MetaNotFound.StatusCode, "not found", nil)
-			return
-		}
-		response.WriteOCSError(w, r, response.MetaServerError.StatusCode, lrs.GetStatus().GetMessage(), nil)
+	lrs, ocsResponse := getSharesList(ctx, client)
+	if ocsResponse != nil {
+		response.WriteOCSResponse(w, r, *ocsResponse, nil)
 		return
 	}
 
 	// we need to sort the received shares by mount point in order to make things easier to evaluate.
-	mountPoints := []string{}
+	var mountPoints []string
 	for _, share := range lrs.Shares {
 		if share.State == collaboration.ShareState_SHARE_STATE_ACCEPTED {
 			// only when the share is accepted there is a mount point.
@@ -212,4 +169,84 @@ func (h *Handler) updateReceivedShare(w http.ResponseWriter, r *http.Request, sh
 	}
 
 	response.WriteOCSSuccess(w, r, []*conversions.ShareData{data})
+}
+
+// getShareFromID uses a client to the gateway to fetch a share based on its ID.
+func getShareFromID(ctx context.Context, client gateway.GatewayAPIClient, shareID string) (*collaboration.GetShareResponse, *response.Response) {
+	s, err := client.GetShare(ctx, &collaboration.GetShareRequest{
+		Ref: &collaboration.ShareReference{
+			Spec: &collaboration.ShareReference_Id{
+				Id: &collaboration.ShareId{
+					OpaqueId: shareID,
+				}},
+		},
+	})
+
+	if err != nil {
+		e := errors.Wrap(err, fmt.Sprintf("could not get share with ID: `%s`", shareID))
+		return nil, arbitraryOcsResponse(response.MetaServerError.StatusCode, e.Error())
+	}
+
+	if s.Status.Code != rpc.Code_CODE_OK {
+		if s.Status.Code == rpc.Code_CODE_NOT_FOUND {
+			e := fmt.Errorf("share not found")
+			return nil, arbitraryOcsResponse(response.MetaNotFound.StatusCode, e.Error())
+		}
+
+		e := fmt.Errorf("invalid share: %s", s.GetStatus().GetMessage())
+		return nil, arbitraryOcsResponse(response.MetaBadRequest.StatusCode, e.Error())
+	}
+
+	return s, nil
+}
+
+// getSharedResource attempts to get a shared resource from the storage from the resource reference.
+func getSharedResource(ctx context.Context, client gateway.GatewayAPIClient, share *collaboration.GetShareResponse) (*provider.StatResponse, *response.Response) {
+	res, err := client.Stat(ctx, &provider.StatRequest{
+		Ref: &provider.Reference{
+			ResourceId: share.Share.GetResourceId(),
+		},
+	})
+	if err != nil {
+		e := fmt.Errorf("could not get reference")
+		return nil, arbitraryOcsResponse(response.MetaServerError.StatusCode, e.Error())
+	}
+
+	if res.Status.Code != rpc.Code_CODE_OK {
+		if res.Status.Code == rpc.Code_CODE_NOT_FOUND {
+			e := fmt.Errorf("not found")
+			return nil, arbitraryOcsResponse(response.MetaNotFound.StatusCode, e.Error())
+		}
+		e := fmt.Errorf(res.GetStatus().GetMessage())
+		return nil, arbitraryOcsResponse(response.MetaServerError.StatusCode, e.Error())
+	}
+
+	return res, nil
+}
+
+// getSharedResource gets the list of all shares for the current user.
+func getSharesList(ctx context.Context, client gateway.GatewayAPIClient) (*collaboration.ListReceivedSharesResponse, *response.Response) {
+	shares, err := client.ListReceivedShares(ctx, &collaboration.ListReceivedSharesRequest{})
+	if err != nil {
+		e := errors.Wrap(err, "error getting shares list")
+		return nil, arbitraryOcsResponse(response.MetaNotFound.StatusCode, e.Error())
+	}
+
+	if shares.Status.Code != rpc.Code_CODE_OK {
+		if shares.Status.Code == rpc.Code_CODE_NOT_FOUND {
+			e := fmt.Errorf("not found")
+			return nil, arbitraryOcsResponse(response.MetaNotFound.StatusCode, e.Error())
+		}
+		e := fmt.Errorf(shares.GetStatus().GetMessage())
+		return nil, arbitraryOcsResponse(response.MetaServerError.StatusCode, e.Error())
+	}
+	return shares, nil
+}
+
+// arbitraryOcsResponse abstracts the boilerplate that is creating a response.Response struct.
+func arbitraryOcsResponse(statusCode int, message string) *response.Response {
+	r := response.NewResponse()
+	r.OCS.Meta.StatusCode = statusCode
+	r.OCS.Meta.Message = message
+	return &r
 }
