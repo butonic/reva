@@ -39,6 +39,7 @@ import (
 	"github.com/cs3org/reva/pkg/share/manager/registry"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
+	"google.golang.org/genproto/protobuf/field_mask"
 )
 
 func init() {
@@ -403,13 +404,28 @@ func (sm *mgr) GetReceivedShare(ctx context.Context, ref *collaboration.ShareRef
 }
 
 // UpdateReceivedShare updates the received share with share state.
-func (sm *mgr) UpdateReceivedShare(ctx context.Context, ref *collaboration.ShareReference, f *collaboration.UpdateReceivedShareRequest_UpdateField) (*collaboration.ReceivedShare, error) {
-	type paramsObj struct {
-		Ref *collaboration.ShareReference                         `json:"ref"`
-		F   *collaboration.UpdateReceivedShareRequest_UpdateField `json:"f"`
+func (sm *mgr) UpdateReceivedShare(ctx context.Context, receivedShare *collaboration.ReceivedShare, fieldMask *field_mask.FieldMask) (*collaboration.ReceivedShare, error) {
+	type updateField struct {
+		State collaboration.ShareState `json:"State"`
+		// TODO: Add support for the new mountpoint field
 	}
+	type paramsObj struct {
+		Ref *collaboration.ShareReference `json:"ref"`
+		F   *updateField                  `json:"f"`
+	}
+
+	f := &updateField{}
+	for i := range fieldMask.Paths {
+		switch fieldMask.Paths[i] {
+		case "state":
+			f.State = receivedShare.State
+		default:
+			return nil, errtypes.NotSupported("updating " + fieldMask.Paths[i] + " is not supported")
+		}
+	}
+
 	bodyObj := &paramsObj{
-		Ref: ref,
+		Ref: &collaboration.ShareReference{Spec: &collaboration.ShareReference_Id{Id: receivedShare.Share.Id}},
 		F:   f,
 	}
 	bodyStr, err := json.Marshal(bodyObj)
