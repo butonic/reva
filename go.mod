@@ -70,6 +70,7 @@ require (
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f
 	golang.org/x/sys v0.0.0-20210921065528-437939a70204
 	golang.org/x/term v0.0.0-20210916214954-140adaaadfaf
+	google.golang.org/genproto v0.0.0-20200825200019-8632dd797987
 	google.golang.org/grpc v1.41.0
 	google.golang.org/protobuf v1.27.1
 	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
@@ -80,6 +81,8 @@ require (
 go 1.16
 
 replace (
+	// FIXME remove the replace when upstream has merged https://github.com/cs3org/cs3apis/pull/144 and synced https://github.com/cs3org/go-cs3apis/pull/44
+	github.com/cs3org/go-cs3apis => github.com/butonic/go-cs3apis v0.0.0-20210929095704-38ebc9ca8bd6
 	github.com/eventials/go-tus => github.com/andrewmostello/go-tus v0.0.0-20200314041820-904a9904af9a
 	github.com/oleiade/reflections => github.com/oleiade/reflections v1.0.1
 	google.golang.org/grpc => google.golang.org/grpc v1.26.0 // temporary downgrade
