@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	userpb "github.com/cs3org/go-cs3apis/cs3/identity/user/v1beta1"
@@ -33,6 +34,7 @@ import (
 	"github.com/cs3org/reva/pkg/appctx"
 	"github.com/cs3org/reva/pkg/errtypes"
 	"github.com/cs3org/reva/pkg/logger"
+	"github.com/cs3org/reva/pkg/storage"
 	"github.com/cs3org/reva/pkg/storage/utils/decomposedfs/node"
 	"github.com/cs3org/reva/pkg/storage/utils/decomposedfs/xattrs"
 	"github.com/cs3org/reva/pkg/utils"
@@ -76,6 +78,7 @@ type Tree struct {
 	root               string
 	treeSizeAccounting bool
 	treeTimeAccounting bool
+	callbacks          map[string]storage.StorageSpaceChangeCallback
 }
 
 // PermissionCheckFunc defined a function used to check resource permissions
@@ -89,6 +92,7 @@ func New(root string, tta bool, tsa bool, lu PathLookup, bs Blobstore) *Tree {
 		root:               root,
 		treeTimeAccounting: tta,
 		treeSizeAccounting: tsa,
+		callbacks:          map[string]storage.StorageSpaceChangeCallback{},
 	}
 }
 
@@ -708,6 +712,17 @@ func (t *Tree) Propagate(ctx context.Context, n *node.Node) (err error) {
 		sublog.Error().Err(err).Msg("error propagating")
 		return
 	}
+	space := &provider.StorageSpace{
+		Id: &provider.StorageSpaceId{OpaqueId: n.SpaceRoot.ID + "!" + n.ID},
+		Root: &provider.ResourceId{
+			StorageId: n.SpaceRoot.ID,
+			OpaqueId:  n.ID,
+		},
+	}
+	// TODO also send callback when walking parents and share space is affected
+	for _, cb := range t.callbacks {
+		cb(space)
+	}
 	return
 }
 
@@ -886,4 +901,15 @@ func (t *Tree) readRecycleItem(ctx context.Context, spaceid, key, path string) (
 	}
 
 	return
+}
+
+var callbacksMutex = &sync.Mutex{}
+
+// RegisterStorageSpaceStream registers a callback for space root changes
+func (t *Tree) RegisterStorageSpaceStream(ctx context.Context, addr string, callback storage.StorageSpaceChangeCallback) error {
+	// TODO how to deregister callbacks? on connection close?
+	callbacksMutex.Lock()
+	defer callbacksMutex.Unlock()
+	t.callbacks[addr] = callback
+	return nil
 }

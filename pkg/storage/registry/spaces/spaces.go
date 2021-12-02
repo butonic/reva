@@ -52,13 +52,15 @@ func init() {
 	pkgregistry.Register("spaces", NewDefault)
 }
 
-type provider struct {
+type rule struct {
 	Mapping           string            `mapstructure:"mapping"`
 	MountPath         string            `mapstructure:"mount_path"`
 	Aliases           map[string]string `mapstructure:"aliases"`
 	AllowedUserAgents []string          `mapstructure:"allowed_user_agents"`
 	PathTemplate      string            `mapstructure:"path_template"`
-	template          *template.Template
+	// should we watch for changes?
+	Watch    bool `mapstructure:"watch"`
+	template *template.Template
 	// filters
 	SpaceType      string `mapstructure:"space_type"`
 	SpaceOwnerSelf bool   `mapstructure:"space_owner_self"`
@@ -76,7 +78,7 @@ type StorageProviderClient interface {
 }
 
 // WithSpace generates a layout based on space data.
-func (p *provider) ProviderPath(u *userpb.User, s *providerpb.StorageSpace) (string, error) {
+func (p *rule) ProviderPath(u *userpb.User, s *providerpb.StorageSpace) (string, error) {
 	b := bytes.Buffer{}
 	if err := p.template.Execute(&b, templateData{CurrentUser: u, Space: s}); err != nil {
 		return "", err
@@ -85,8 +87,8 @@ func (p *provider) ProviderPath(u *userpb.User, s *providerpb.StorageSpace) (str
 }
 
 type config struct {
-	Providers    map[string]*provider `mapstructure:"providers"`
-	HomeTemplate string               `mapstructure:"home_template"`
+	Providers    map[string]*rule `mapstructure:"providers"`
+	HomeTemplate string           `mapstructure:"home_template"`
 }
 
 func (c *config) init() {
@@ -96,7 +98,7 @@ func (c *config) init() {
 	}
 
 	if len(c.Providers) == 0 {
-		c.Providers = map[string]*provider{
+		c.Providers = map[string]*rule{
 			sharedconf.GetGatewaySVC(""): {
 				MountPath: "/",
 			},
@@ -104,7 +106,7 @@ func (c *config) init() {
 	}
 
 	// cleanup rule paths
-	for _, rule := range c.Providers {
+	for addr, rule := range c.Providers {
 		// if the path template is not explicitly set use the mountpath as path template
 		if rule.PathTemplate == "" && strings.HasPrefix(rule.MountPath, "/") {
 			// TODO err if the path is a regex
@@ -121,7 +123,15 @@ func (c *config) init() {
 			logger.New().Fatal().Err(err).Interface("rule", rule).Msg("error parsing template")
 		}
 
-		// TODO connect to provider, (List Spaces,) ListContainerStream
+		if rule.Watch {
+			// watch provider, currently there is no special call, highjacking ListContainerStream
+			p := provider{Address: addr}
+			p.client, err = pool.GetStorageProviderServiceClient(addr)
+			if err != nil {
+				logger.New().Fatal().Err(err).Interface("rule", rule).Msg("error starting watch")
+			}
+			go p.Watch()
+		}
 	}
 }
 
@@ -135,19 +145,14 @@ func parseConfig(m map[string]interface{}) (*config, error) {
 
 // New creates an implementation of the storage.Registry interface that
 // uses the available storage spaces from the configured storage providers
-func New(m map[string]interface{}, getClientFunc GetStorageProviderServiceClientFunc) (storage.Registry, error) {
-	c, err := parseConfig(m)
-	if err != nil {
-		return nil, err
-	}
-	c.init()
+func New(c *config, getClientFunc GetStorageProviderServiceClientFunc) (storage.Registry, error) {
 	r := &registry{
-		c:         c,
-		resources: make(map[string][]*registrypb.ProviderInfo),
-		//aliases:           make(map[string]map[string]*spaceAndProvider),
+		c:                               c,
+		resources:                       make(map[string][]*registrypb.ProviderInfo),
 		resourceNameCache:               make(map[string]string),
 		getStorageProviderServiceClient: getClientFunc,
 	}
+	var err error
 	r.homeTemplate, err = template.New("home_template").Funcs(sprig.TxtFuncMap()).Parse(c.HomeTemplate)
 	if err != nil {
 		return nil, err
@@ -158,10 +163,15 @@ func New(m map[string]interface{}, getClientFunc GetStorageProviderServiceClient
 // NewDefault creates an implementation of the storage.Registry interface that
 // uses the available storage spaces from the configured storage providers
 func NewDefault(m map[string]interface{}) (storage.Registry, error) {
+	c, err := parseConfig(m)
+	if err != nil {
+		return nil, err
+	}
+	c.init()
 	getClientFunc := func(addr string) (StorageProviderClient, error) {
 		return pool.GetStorageProviderServiceClient(addr)
 	}
-	return New(m, getClientFunc)
+	return New(c, getClientFunc)
 }
 
 // GetStorageProviderServiceClientFunc is a callback used to pass in a StorageProviderClient during testing
@@ -182,9 +192,9 @@ type registry struct {
 
 // GetProvider return the storage provider for the given spaces according to the rule configuration
 func (r *registry) GetProvider(ctx context.Context, space *providerpb.StorageSpace) (*registrypb.ProviderInfo, error) {
+	var err error
 	for address, rule := range r.c.Providers {
 		mountPath := ""
-		var err error
 		if space.SpaceType != "" && rule.SpaceType != space.SpaceType {
 			continue
 		}

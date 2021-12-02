@@ -30,6 +30,7 @@ import (
 
 	rpc "github.com/cs3org/go-cs3apis/cs3/rpc/v1beta1"
 	provider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
+	typesv1beta1 "github.com/cs3org/go-cs3apis/cs3/types/v1beta1"
 	"github.com/cs3org/reva/pkg/appctx"
 	ctxpkg "github.com/cs3org/reva/pkg/ctx"
 	"github.com/cs3org/reva/pkg/errtypes"
@@ -101,7 +102,9 @@ func (s *service) Close() error {
 	return s.storage.Shutdown(context.Background())
 }
 
-func (s *service) UnprotectedEndpoints() []string { return []string{} }
+func (s *service) UnprotectedEndpoints() []string {
+	return []string{"/cs3.storage.provider.v1beta1.ProviderAPI/ListContainerStream"}
+}
 
 func (s *service) Register(ss *grpc.Server) {
 	provider.RegisterProviderAPIServer(ss, s)
@@ -588,9 +591,49 @@ func (s *service) Stat(ctx context.Context, req *provider.StatRequest) (*provide
 	return res, nil
 }
 
+func isStreamSpaceChangesRequest(req *provider.ListContainerStreamRequest) bool {
+	return req != nil && req.Ref != nil && req.Ref.ResourceId != nil && req.Ref.ResourceId.StorageId == "*" && req.Ref.ResourceId.OpaqueId == "*"
+}
+
 func (s *service) ListContainerStream(req *provider.ListContainerStreamRequest, ss provider.ProviderAPI_ListContainerStreamServer) error {
 	ctx := ss.Context()
 	log := appctx.GetLogger(ctx)
+
+	if streamStorage, ok := s.storage.(storage.SpaceStreamFS); ok {
+		if isStreamSpaceChangesRequest(req) {
+			id := "unknown"
+			if req.Opaque != nil && req.Opaque.Map != nil && req.Opaque.Map["client_id"] != nil && req.Opaque.Map["client_id"].Decoder == "plain" {
+				id = string(req.Opaque.Map["client_id"].Value)
+			}
+			err := streamStorage.RegisterStorageSpaceStream(ctx, id, func(space *provider.StorageSpace) error {
+				spaceJSON, err := json.Marshal(space)
+				if err != nil {
+					return err
+				}
+				res := &provider.ListContainerStreamResponse{
+					Status: &rpc.Status{Code: rpc.Code_CODE_OK},
+					Opaque: &typesv1beta1.Opaque{
+						Map: map[string]*typesv1beta1.OpaqueEntry{
+							"space": {
+								Decoder: "json",
+								Value:   []byte(spaceJSON),
+							},
+						},
+					},
+				}
+				if err := ss.Send(res); err != nil {
+					log.Error().Err(err).Msg("Send: error sending message")
+				}
+				return nil
+			})
+			if err != nil {
+				log.Error().Err(err).Msg("ListContainerStream: error registering StorageSpaceStream callback")
+			}
+			// Keep context alive to keep stream open
+			<-ctx.Done()
+		}
+		return nil
+	}
 
 	mds, err := s.storage.ListFolder(ctx, req.Ref, req.ArbitraryMetadataKeys)
 	if err != nil {

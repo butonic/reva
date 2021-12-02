@@ -63,7 +63,7 @@ home_template = "/users/{{.Id.OpaqueId}}"
 
 [grpc.services.storageregistry.drivers.spaces.providers]
 ## obviously, we do not want to define a rule for every user and space, which is why we can define naming rules:
-"localhost:11000" = {"mount_path" = "/users", "space_type" = "personal", "path_template" = "/users/{{.Space.Owner.Id.OpaqueId}}", "description" = "personal spaces"}
+"localhost:11000" = {"mount_path" = "/users", "space_type" = "personal", "path_template" = "/users/{{.Space.Owner.Id.OpaqueId}}", "description" = "personal spaces", "watch" = true}
 
 ## users can be spread over multiple providers like this:
 #"localhost:11000" = {"mount_path" = "/users/[0-9]", "space_type" = "personal", "path_template" = "/users/{{.Space.Owner.Id.OpaqueId}}", "description" = "personal spaces 0-9"}

@@ -77,6 +77,7 @@ type Tree interface {
 	DeleteBlob(key string) error
 
 	Propagate(ctx context.Context, node *node.Node) (err error)
+	RegisterStorageSpaceStream(ctx context.Context, addr string, callback storage.StorageSpaceChangeCallback) error
 }
 
 // Decomposedfs provides the base for decomposed filesystem implementations

@@ -63,6 +63,12 @@ type FS interface {
 	DeleteStorageSpace(ctx context.Context, req *provider.DeleteStorageSpaceRequest) error
 }
 
+type SpaceStreamFS interface {
+	RegisterStorageSpaceStream(ctx context.Context, address string, callback StorageSpaceChangeCallback) error
+}
+
+type StorageSpaceChangeCallback func(space *provider.StorageSpace) error
+
 // Registry is the interface that storage registries implement
 // for discovering storage providers
 type Registry interface {
