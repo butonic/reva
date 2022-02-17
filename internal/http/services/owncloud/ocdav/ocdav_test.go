@@ -30,7 +30,7 @@ import (
 )
 
 func TestWrapResourceID(t *testing.T) {
-	expected := "storageid" + "!" + "opaqueid"
+	expected := "c3RvcmFnZWlkOm9wYXF1ZWlk"
 	wrapped := resourceid.OwnCloudResourceIDWrap(&providerv1beta1.ResourceId{StorageId: "storageid", OpaqueId: "opaqueid"})
 
 	if wrapped != expected {

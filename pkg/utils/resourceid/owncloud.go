@@ -19,6 +19,7 @@
 package resourceid
 
 import (
+	"encoding/base64"
 	"errors"
 	"strings"
 	"unicode/utf8"
@@ -27,7 +28,7 @@ import (
 )
 
 const (
-	idDelimiter string = "!"
+	idDelimiter string = ":"
 )
 
 // OwnCloudResourceIDUnwrap returns the wrapped resource id
@@ -41,7 +42,12 @@ func OwnCloudResourceIDUnwrap(rid string) *provider.ResourceId {
 }
 
 func unwrap(rid string) (*provider.ResourceId, error) {
-	parts := strings.SplitN(rid, idDelimiter, 2)
+	decodedID, err := base64.URLEncoding.DecodeString(rid)
+	if err != nil {
+		return nil, err
+	}
+
+	parts := strings.SplitN(string(decodedID), idDelimiter, 2)
 	if len(parts) != 2 {
 		return nil, errors.New("could not find two parts with given delimiter")
 	}
@@ -62,9 +68,10 @@ func OwnCloudResourceIDWrap(r *provider.ResourceId) string {
 	return wrap(r.StorageId, r.OpaqueId)
 }
 
-// The storageID and OpaqueID need to be separated by a delimiter
-// this delimiter should be Url safe
-// we use a reserved character
+// The fileID must be encoded
+// - XML safe, because it is going to be used in the propfind result
+// - url safe, because the id might be used in a url, eg. the /dav/meta nodes
+// which is why we base64 encode it
 func wrap(sid string, oid string) string {
-	return sid + idDelimiter + oid
+	return base64.URLEncoding.EncodeToString([]byte(sid + idDelimiter + oid))
 }
