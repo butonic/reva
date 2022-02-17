@@ -47,11 +47,8 @@ import (
 )
 
 const (
-	spaceTypePersonal = "personal"
-	spaceTypeProject  = "project"
-	spaceTypeShare    = "share"
-	spaceTypeAny      = "*"
-	spaceIDAny        = "*"
+	spaceTypeAny = "*"
+	spaceIDAny   = "*"
 )
 
 // CreateStorageSpace creates a storage space
@@ -79,7 +76,7 @@ func (fs *Decomposedfs) CreateStorageSpace(ctx context.Context, req *provider.Cr
 	}
 	// TODO enforce a uuid?
 	// TODO clarify if we want to enforce a single personal storage space or if we want to allow sending the spaceid
-	if req.Type == spaceTypePersonal {
+	if req.Type == "personal" {
 		spaceID = req.Owner.Id.OpaqueId
 	}
 
@@ -112,12 +109,7 @@ func (fs *Decomposedfs) CreateStorageSpace(ctx context.Context, req *provider.Cr
 		return nil, fmt.Errorf("decomposedfs: spaces: contextual user not found")
 	}
 
-	ownerID := u.Id
-	if req.Type == spaceTypeProject {
-		ownerID = &userv1beta1.UserId{}
-	}
-
-	if err := n.ChangeOwner(ownerID); err != nil {
+	if err := n.ChangeOwner(u.Id); err != nil {
 		return nil, err
 	}
 
@@ -286,7 +278,7 @@ func (fs *Decomposedfs) ListStorageSpaces(ctx context.Context, filter []*provide
 		spaceType := filepath.Base(filepath.Dir(matches[i]))
 
 		// FIXME type share evolved to grant on the edge branch ... make it configurable if the driver should support them or not for now ... ignore type share
-		if spaceType == spaceTypeShare {
+		if spaceType == "share" {
 			numShares++
 			// do not list shares as spaces for the owner
 			continue
@@ -515,7 +507,7 @@ func (fs *Decomposedfs) DeleteStorageSpace(ctx context.Context, req *provider.De
 			return err
 		}
 
-		matches, err = filepath.Glob(filepath.Join(fs.o.Root, "nodes", node.RootID, req.Id.OpaqueId+node.TrashIDDelimiter+"*"))
+		matches, err = filepath.Glob(filepath.Join(fs.o.Root, "nodes", "root", req.Id.OpaqueId+node.TrashIDDelimiter+"*"))
 		if err != nil {
 			return err
 		}
@@ -667,10 +659,8 @@ func (fs *Decomposedfs) storageSpaceFromNode(ctx context.Context, n *node.Node, 
 		}
 	}
 
-	if spaceType != spaceTypeProject && owner.OpaqueId != "" {
-		space.Owner = &userv1beta1.User{ // FIXME only return a UserID, not a full blown user object
-			Id: owner,
-		}
+	space.Owner = &userv1beta1.User{ // FIXME only return a UserID, not a full blown user object
+		Id: owner,
 	}
 
 	// we set the space mtime to the root item mtime

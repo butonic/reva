@@ -194,8 +194,7 @@ func (r *registry) GetProvider(ctx context.Context, space *providerpb.StorageSpa
 				continue
 			}
 			if space.Owner != nil {
-				user := ctxpkg.ContextMustGetUser(ctx)
-				spacePath, err = sc.SpacePath(user, space)
+				spacePath, err = sc.SpacePath(nil, space)
 				if err != nil {
 					continue
 				}

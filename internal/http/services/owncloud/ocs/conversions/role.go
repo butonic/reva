@@ -40,6 +40,8 @@ const (
 	RoleEditor = "editor"
 	// RoleFileEditor grants editor permission on a single file.
 	RoleFileEditor = "file-editor"
+	// RoleCoowner grants co-owner permissions on a resource.
+	RoleCoowner = "coowner"
 	// RoleUploader grants uploader permission to upload onto a resource.
 	RoleUploader = "uploader"
 	// RoleManager grants manager permissions on a resource. Semantically equivalent to co-owner.
@@ -125,6 +127,8 @@ func RoleFromName(name string) *Role {
 		return NewEditorRole()
 	case RoleFileEditor:
 		return NewFileEditorRole()
+	case RoleCoowner:
+		return NewCoownerRole()
 	case RoleUploader:
 		return NewUploaderRole()
 	case RoleManager:
@@ -207,6 +211,34 @@ func NewFileEditorRole() *Role {
 	}
 }
 
+// NewCoownerRole creates a coowner role
+func NewCoownerRole() *Role {
+	return &Role{
+		Name: RoleCoowner,
+		cS3ResourcePermissions: &provider.ResourcePermissions{
+			GetPath:              true,
+			GetQuota:             true,
+			InitiateFileDownload: true,
+			ListGrants:           true,
+			ListContainer:        true,
+			ListFileVersions:     true,
+			ListRecycle:          true,
+			Stat:                 true,
+			InitiateFileUpload:   true,
+			RestoreFileVersion:   true,
+			RestoreRecycleItem:   true,
+			CreateContainer:      true,
+			Delete:               true,
+			Move:                 true,
+			PurgeRecycle:         true,
+			AddGrant:             true,
+			UpdateGrant:          true,
+			RemoveGrant:          true,
+		},
+		ocsPermissions: PermissionAll,
+	}
+}
+
 // NewUploaderRole creates an uploader role
 func NewUploaderRole() *Role {
 	return &Role{
@@ -222,7 +254,7 @@ func NewUploaderRole() *Role {
 	}
 }
 
-// NewManagerRole creates an manager role
+// NewManagerRole creates an editor role
 func NewManagerRole() *Role {
 	return &Role{
 		Name: RoleManager,
@@ -362,9 +394,9 @@ func RoleFromResourcePermissions(rp *provider.ResourcePermissions) *Role {
 		if r.ocsPermissions.Contain(PermissionWrite) && r.ocsPermissions.Contain(PermissionCreate) && r.ocsPermissions.Contain(PermissionDelete) {
 			r.Name = RoleEditor
 			if r.ocsPermissions.Contain(PermissionShare) {
-				r.Name = RoleManager
+				r.Name = RoleCoowner
 			}
-			return r // editor or manager
+			return r // editor or coowner
 		}
 		if r.ocsPermissions == PermissionRead {
 			r.Name = RoleViewer
