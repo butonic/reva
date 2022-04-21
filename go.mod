@@ -28,6 +28,9 @@ require (
 	github.com/go-ldap/ldap/v3 v3.4.1
 	github.com/go-micro/plugins/v4/events/natsjs v1.0.0
 	github.com/go-micro/plugins/v4/server/http v1.0.0
+	github.com/go-micro/plugins/v4/store/file v1.0.0
+	github.com/go-micro/plugins/v4/store/memory v1.0.0
+	github.com/go-micro/plugins/v4/store/redis v1.0.0
 	github.com/go-openapi/errors v0.20.1 // indirect
 	github.com/go-openapi/strfmt v0.20.2 // indirect
 	github.com/go-sql-driver/mysql v1.6.0
@@ -75,10 +78,11 @@ require (
 	go.mongodb.org/mongo-driver v1.7.2 // indirect
 	go.opencensus.io v0.23.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.28.0
-	go.opentelemetry.io/otel v1.3.0
+	go.opentelemetry.io/otel v1.4.0
 	go.opentelemetry.io/otel/exporters/jaeger v1.3.0
+	go.opentelemetry.io/otel/internal/metric v0.27.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.3.0
-	go.opentelemetry.io/otel/trace v1.3.0
+	go.opentelemetry.io/otel/trace v1.4.0
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292
 	golang.org/x/oauth2 v0.0.0-20211005180243-6b3c2da341f1
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
