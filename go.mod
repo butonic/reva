@@ -29,7 +29,7 @@ require (
 	github.com/go-micro/plugins/v4/events/natsjs v1.0.0
 	github.com/go-micro/plugins/v4/server/http v1.0.0
 	github.com/go-micro/plugins/v4/store/file v1.0.0
-	github.com/go-micro/plugins/v4/store/memory v1.0.0
+	github.com/go-micro/plugins/v4/store/memory v1.0.1-0.20220422014257-ced805fd6857
 	github.com/go-micro/plugins/v4/store/redis v1.0.0
 	github.com/go-openapi/errors v0.20.1 // indirect
 	github.com/go-openapi/strfmt v0.20.2 // indirect

@@ -314,8 +314,8 @@ github.com/go-micro/plugins/v4/server/http v1.0.0 h1:cuSp4F8uS7sWjvmsJ8M4k18rZF3
 github.com/go-micro/plugins/v4/server/http v1.0.0/go.mod h1:E8eoUONK91jcMpvkcFUsqbgDyKyri3x7ty2GuM5SsI0=
 github.com/go-micro/plugins/v4/store/file v1.0.0 h1:FpfA5rpFUYupz0um7auZcNPL5tDC07Xh12Q3q1aBPeM=
 github.com/go-micro/plugins/v4/store/file v1.0.0/go.mod h1:WOXtNR+iZ9r0+02QnhxPbZH17P1+5qlzBmSanPeoBYU=
-github.com/go-micro/plugins/v4/store/memory v1.0.0 h1:PtogsvLjfNrdcnPifXArpxDHHADXISy2yfTIMl/ZJeY=
-github.com/go-micro/plugins/v4/store/memory v1.0.0/go.mod h1:Ppc0nHpP9aiY7tboWzJZCRQDOpCLXJzU6ojQkGuuIbc=
+github.com/go-micro/plugins/v4/store/memory v1.0.1-0.20220422014257-ced805fd6857 h1:bAACdrp4b+BDuTPhPoylSXBLzwcrEXEZXVB+UHV0LbA=
+github.com/go-micro/plugins/v4/store/memory v1.0.1-0.20220422014257-ced805fd6857/go.mod h1:Ppc0nHpP9aiY7tboWzJZCRQDOpCLXJzU6ojQkGuuIbc=
 github.com/go-micro/plugins/v4/store/redis v1.0.0 h1:FgnM57sYIPGrUbmqCUMO3ERGO50NsHz/i9/Aw8azjUM=
 github.com/go-micro/plugins/v4/store/redis v1.0.0/go.mod h1:SN5CJl2MDe5i1cOABnPIvD64xVCWSpzqdxUk5xE4XQk=
 github.com/go-openapi/analysis v0.0.0-20180825180245-b006789cd277/go.mod h1:k70tL6pCuVxPJOHXQ+wIac1FUrvNkHolPie/cLEU6hI=
