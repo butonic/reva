@@ -31,6 +31,7 @@ import (
 	"time"
 
 	provider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
+	"github.com/cs3org/reva/v2/internal/grpc/services/storageprovider"
 	"github.com/cs3org/reva/v2/pkg/appctx"
 	"github.com/cs3org/reva/v2/pkg/errtypes"
 	"github.com/cs3org/reva/v2/pkg/events"
@@ -167,33 +168,53 @@ func (store OcisStore) Cleanup(ctx context.Context, session Session, failure boo
 	}
 	// FIXME: after cleanup the node might already be deleted ...
 	if n != nil { // node can be nil when there was an error before it was created (eg. checksum-mismatch)
+		// if there was no failure we can update the blobid and size
+
 		if err := n.UnmarkProcessing(ctx, session.ID()); err != nil {
 			appctx.GetLogger(ctx).Info().Str("path", n.InternalPath()).Err(err).Msg("unmarking processing failed")
 		}
 	}
 }
 
-// CreateNodeForUpload will create the target node for the Upload
+// CreateNodeForUpload will create or update the target node for the Upload
 // TODO move this to the node package as NodeFromUpload?
-// should we in InitiateUpload create the node first? and then the upload?
+// should we in InitiateUpload create the node first? and then the upload? no, no need to create a node if the upload never finishes
+// Unless we want clients to be able to discover unfinished uploads... for that they would have to be able to see a file. Even with 0 bytes.
+// Isn't InitializeUpload like an fopen for writing? fopening will create an empty file.
 func (store OcisStore) CreateNodeForUpload(session *OcisSession, initAttrs node.Attributes) (*node.Node, error) {
 	ctx, span := tracer.Start(session.Context(context.Background()), "CreateNodeForUpload")
 	defer span.End()
-	n := node.New(
-		session.SpaceID(),
-		session.NodeID(),
-		session.NodeParentID(),
-		session.Filename(),
-		session.Size(),
-		session.ID(),
-		provider.ResourceType_RESOURCE_TYPE_FILE,
-		nil,
-		store.lu,
-	)
+
+	var n *node.Node
 	var err error
-	n.SpaceRoot, err = node.ReadNode(ctx, store.lu, session.SpaceID(), session.SpaceID(), false, nil, false)
-	if err != nil {
-		return nil, err
+	if session.NodeID() == "" {
+		n, err = node.ReadNode(ctx, store.lu, session.SpaceID(), session.NodeID(), false, nil, false)
+		if err != nil {
+			return nil, err
+		}
+		// todo lock here
+	} else {
+		p, err := node.ReadNode(ctx, store.lu, session.SpaceID(), session.NodeParentID(), false, nil, false)
+		if err != nil {
+			return nil, err
+		}
+		// write lock existing node before reading any metadata
+		f, err := lockedfile.OpenFile(store.lu.MetadataBackend().LockfilePath(n.ParentPath()+"-"+n.Name), os.O_RDWR|os.O_CREATE, 0600)
+		if err != nil {
+			return nil, err
+		}
+		n, err = p.Child(ctx, session.Filename())
+		if err != nil {
+			return nil, err
+		}
+		// here, two uploads might return a non existing child
+		// that means we would have to lock the parent before creating the symlink? at least when creating new files ...
+		// -> we need to be able to lock a single child in a dir without it existing
+		// something we need for webdav / the n.CheckLock anyway
+		// check if a concurrent upload created the node
+		if n.ID == "" {
+			n.ID = uuid.New().String()
+		}
 	}
 
 	// check lock
@@ -201,9 +222,35 @@ func (store OcisStore) CreateNodeForUpload(session *OcisSession, initAttrs node.
 		return nil, err
 	}
 
+	// first write a revision node with blobid, size, mtime and set the processing status on it
+	rm := RevisionMetadata{
+		MTime:           session.MTime(),
+		BlobID:          n.BlobID,
+		BlobSize:        n.Blobsize,
+		ChecksumSHA1:    initAttrs[prefixes.ChecksumPrefix+storageprovider.XSSHA1],
+		ChecksumMD5:     initAttrs[prefixes.ChecksumPrefix+storageprovider.XSMD5],
+		ChecksumADLER32: initAttrs[prefixes.ChecksumPrefix+storageprovider.XSAdler32],
+	}
+
+	// TODO refactor CreateRevisionNode and WriteRevisionMetadataToNode to a rm.Persist() call.
+	revisionNode := n.RevisionNode(ctx, rm.MTime.Format(time.RFC3339Nano))
+	rh, err := CreateRevisionNode(ctx, store.lu, revisionNode)
+	if err != nil {
+		return nil, err
+	}
+	defer rh.Close()
+	err = WriteRevisionMetadataToNode(ctx, revisionNode, rm)
+	if err != nil {
+		return nil, err
+	}
+
+	SetNodeToUpload(ctx, store.lu, n, rm)
+
+	// then create or update the node
+
 	var f *lockedfile.File
 	if session.NodeExists() {
-		f, err = store.updateExistingNode(ctx, session, n, session.SpaceID(), uint64(session.Size()))
+		f, err = store.updateExistingNode(ctx, session, n, uint64(session.Size()))
 		if f != nil {
 			appctx.GetLogger(ctx).Info().Str("lockfile", f.Name()).Interface("err", err).Msg("got lock file from updateExistingNode")
 		}
@@ -236,7 +283,7 @@ func (store OcisStore) CreateNodeForUpload(session *OcisSession, initAttrs node.
 	initAttrs.SetInt64(prefixes.TypeAttr, int64(provider.ResourceType_RESOURCE_TYPE_FILE))
 	initAttrs.SetString(prefixes.ParentidAttr, n.ParentID)
 	initAttrs.SetString(prefixes.NameAttr, n.Name)
-	initAttrs.SetString(prefixes.BlobIDAttr, n.BlobID)
+	initAttrs.SetString(prefixes.BlobIDAttr, n.BlobID) // here we already update the node with the new blobid, but the blob might actually not have been transferred
 	initAttrs.SetInt64(prefixes.BlobsizeAttr, n.Blobsize)
 	initAttrs.SetString(prefixes.StatusPrefix, node.ProcessingStatus+session.ID())
 
@@ -297,7 +344,7 @@ func (store OcisStore) initNewNode(ctx context.Context, session *OcisSession, n 
 	return f, nil
 }
 
-func (store OcisStore) updateExistingNode(ctx context.Context, session *OcisSession, n *node.Node, spaceID string, fsize uint64) (*lockedfile.File, error) {
+func (store OcisStore) updateExistingNode(ctx context.Context, session *OcisSession, n *node.Node, fsize uint64) (*lockedfile.File, error) {
 	targetPath := n.InternalPath()
 
 	// write lock existing node before reading any metadata
@@ -306,7 +353,10 @@ func (store OcisStore) updateExistingNode(ctx context.Context, session *OcisSess
 		return nil, err
 	}
 
-	old, _ := node.ReadNode(ctx, store.lu, spaceID, n.ID, false, nil, false)
+	old, err := node.ReadNode(ctx, store.lu, n.SpaceID, n.ID, false, nil, false)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := node.CheckQuota(ctx, n.SpaceRoot, true, uint64(old.Blobsize), fsize); err != nil {
 		return f, err
 	}
@@ -352,7 +402,7 @@ func (store OcisStore) updateExistingNode(ctx context.Context, session *OcisSess
 		}
 	}
 
-	session.info.MetaData["versionsPath"] = session.store.lu.InternalPath(spaceID, n.ID+node.RevisionIDDelimiter+oldNodeMtime.UTC().Format(time.RFC3339Nano))
+	session.info.MetaData["versionsPath"] = session.store.lu.InternalPath(n.SpaceID, n.ID+node.RevisionIDDelimiter+oldNodeMtime.UTC().Format(time.RFC3339Nano))
 	session.info.MetaData["sizeDiff"] = strconv.FormatInt((int64(fsize) - old.Blobsize), 10)
 
 	// create version node

@@ -26,7 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	tusd "github.com/tus/tusd/pkg/handler"
 
 	provider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
@@ -242,6 +241,12 @@ func (fs *Decomposedfs) InitiateUpload(ctx context.Context, ref *provider.Refere
 			SpaceId:  checkNode.SpaceID,
 			OpaqueId: checkNode.ID,
 		}})
+		// add session to node metadata
+		//n.SetXattrsWithContext(ctx, map[string][]byte{}, true)
+		// hm but why lock here ... let there be as many revision files as needed.
+		// we can always just write a revision. but with what id? does it matter? IIRC the desktop wants a file id
+		// we can fail later when the later upload tries to finish and create the node.
+		// actually, when trying to link the child in the parent dir we can detect that another upload already created a node and use it instead of erroring.
 	} else {
 		// check permissions of parent
 		checkNode = parent
@@ -276,9 +281,9 @@ func (fs *Decomposedfs) InitiateUpload(ctx context.Context, ref *provider.Refere
 			return nil, errtypes.Aborted(fmt.Sprintf("parent %s already has a child %s, id %s", n.ParentID, n.Name, n.ID))
 		}
 		session.SetStorageValue("NodeId", n.ID)
-		session.SetStorageValue("NodeExists", "true")
-	} else {
-		session.SetStorageValue("NodeId", uuid.New().String())
+		// session.SetStorageValue("NodeExists", "true")
+		//} else {
+		// session.SetStorageValue("NodeId", uuid.New().String())
 	}
 	session.SetStorageValue("NodeParentId", n.ParentID)
 	session.SetExecutant(usr)

@@ -33,6 +33,7 @@ import (
 	"time"
 
 	provider "github.com/cs3org/go-cs3apis/cs3/storage/provider/v1beta1"
+	"github.com/cs3org/reva/v2/internal/grpc/services/storageprovider"
 	"github.com/cs3org/reva/v2/pkg/appctx"
 	ctxpkg "github.com/cs3org/reva/v2/pkg/ctx"
 	"github.com/cs3org/reva/v2/pkg/errtypes"
@@ -184,9 +185,9 @@ func (session *OcisSession) FinishUpload(ctx context.Context) error {
 
 	// update checksums
 	attrs := node.Attributes{
-		prefixes.ChecksumPrefix + "sha1":    sha1h.Sum(nil),
-		prefixes.ChecksumPrefix + "md5":     md5h.Sum(nil),
-		prefixes.ChecksumPrefix + "adler32": adler32h.Sum(nil),
+		prefixes.ChecksumPrefix + storageprovider.XSSHA1:    sha1h.Sum(nil),
+		prefixes.ChecksumPrefix + storageprovider.XSMD5:     md5h.Sum(nil),
+		prefixes.ChecksumPrefix + storageprovider.XSAdler32: adler32h.Sum(nil),
 	}
 
 	n, err := session.store.CreateNodeForUpload(session, attrs)
@@ -324,7 +325,7 @@ func (session *OcisSession) Cleanup(cleanNode, cleanBin, cleanInfo bool) {
 			}
 			if err := session.store.lu.CopyMetadata(ctx, p, n.InternalPath(), func(attributeName string, value []byte) (newValue []byte, copy bool) {
 				return value, strings.HasPrefix(attributeName, prefixes.ChecksumPrefix) ||
-					attributeName == prefixes.TypeAttr ||
+					attributeName == prefixes.TypeAttr || // TODO why the type attr, only files have revisions?
 					attributeName == prefixes.BlobIDAttr ||
 					attributeName == prefixes.BlobsizeAttr ||
 					attributeName == prefixes.MTimeAttr

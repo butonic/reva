@@ -73,8 +73,7 @@ const (
 	QuotaUnknown      = "-2"
 
 	// TrashIDDelimiter represents the characters used to separate the nodeid and the deletion time.
-	TrashIDDelimiter    = ".T."
-	RevisionIDDelimiter = ".REV."
+	TrashIDDelimiter = ".T."
 
 	// RootID defines the root node's ID
 	RootID = "root"
