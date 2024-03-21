@@ -135,7 +135,7 @@ func (sm *Manager) SetHTTPClient(c *http.Client) {
 }
 
 // StoreShare stores a share.
-func (sm *Manager) StoreShare(ctx context.Context, share *ocm.Share) (*ocm.Share, error) {
+func (sm *Manager) StoreShare(ctx context.Context, share *share.OCMShareWithSecret) (*share.OCMShareWithSecret, error) {
 	encShare, err := utils.MarshalProtoV1ToJSON(share)
 	if err != nil {
 		return nil, err
@@ -151,7 +151,7 @@ func (sm *Manager) StoreShare(ctx context.Context, share *ocm.Share) (*ocm.Share
 }
 
 // GetShare gets the information for a share by the given ref.
-func (sm *Manager) GetShare(ctx context.Context, user *userpb.User, ref *ocm.ShareReference) (*ocm.Share, error) {
+func (sm *Manager) GetShare(ctx context.Context, user *userpb.User, ref *ocm.ShareReference) (*share.OCMShareWithSecret, error) {
 	data, err := json.Marshal(ref)
 	if err != nil {
 		return nil, err
@@ -165,15 +165,18 @@ func (sm *Manager) GetShare(ctx context.Context, user *userpb.User, ref *ocm.Sha
 	if err := json.Unmarshal(body, &altResult); err != nil {
 		return nil, err
 	}
-	return &ocm.Share{
-		Id: altResult.ID,
-		Grantee: &provider.Grantee{
-			Id: altResult.Grantee.ID,
+	return &share.OCMShareWithSecret{
+		Share: ocm.Share{
+			Id: altResult.ID,
+			Grantee: &provider.Grantee{
+				Id: altResult.Grantee.ID,
+			},
+			Owner:   altResult.Owner,
+			Creator: altResult.Creator,
+			Ctime:   altResult.Ctime,
+			Mtime:   altResult.Mtime,
 		},
-		Owner:   altResult.Owner,
-		Creator: altResult.Creator,
-		Ctime:   altResult.Ctime,
-		Mtime:   altResult.Mtime,
+		// TODO secret?
 	}, nil
 }
 

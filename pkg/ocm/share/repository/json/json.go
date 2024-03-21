@@ -93,7 +93,7 @@ func loadOrCreate(file string) (*shareModel, error) {
 	}
 
 	if m.Shares == nil {
-		m.Shares = map[string]*ocm.Share{}
+		m.Shares = map[string]*share.OCMShareWithSecret{}
 	}
 	if m.ReceivedShares == nil {
 		m.ReceivedShares = map[string]*ocm.ReceivedShare{}
@@ -103,8 +103,8 @@ func loadOrCreate(file string) (*shareModel, error) {
 }
 
 type shareModel struct {
-	Shares         map[string]*ocm.Share         `json:"shares"`          // share_id -> share
-	ReceivedShares map[string]*ocm.ReceivedShare `json:"received_shares"` // share_id -> share
+	Shares         map[string]*share.OCMShareWithSecret `json:"shares"`          // share_id -> share
+	ReceivedShares map[string]*ocm.ReceivedShare        `json:"received_shares"` // share_id -> share
 }
 
 func (s *shareModel) UnmarshalJSON(d []byte) error {
@@ -117,13 +117,13 @@ func (s *shareModel) UnmarshalJSON(d []byte) error {
 		return err
 	}
 
-	share := map[string]*ocm.Share{}
+	shares := map[string]*share.OCMShareWithSecret{}
 	for k, v := range m.Shares {
-		var s ocm.Share
+		var s share.OCMShareWithSecret
 		if err := utils.UnmarshalJSONToProtoV1(v, &s); err != nil {
 			return err
 		}
-		share[k] = &s
+		shares[k] = &s
 	}
 
 	received := map[string]*ocm.ReceivedShare{}
@@ -136,7 +136,7 @@ func (s *shareModel) UnmarshalJSON(d []byte) error {
 	}
 
 	*s = shareModel{
-		Shares:         share,
+		Shares:         shares,
 		ReceivedShares: received,
 	}
 
@@ -223,7 +223,7 @@ func genID() string {
 	return uuid.New().String()
 }
 
-func (m *mgr) StoreShare(ctx context.Context, ocmshare *ocm.Share) (*ocm.Share, error) {
+func (m *mgr) StoreShare(ctx context.Context, ocmshare *share.OCMShareWithSecret) (*share.OCMShareWithSecret, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -253,12 +253,12 @@ func (m *mgr) StoreShare(ctx context.Context, ocmshare *ocm.Share) (*ocm.Share, 
 	return ocmshare, nil
 }
 
-func cloneShare(s *ocm.Share) (*ocm.Share, error) {
+func cloneShare(s *share.OCMShareWithSecret) (*share.OCMShareWithSecret, error) {
 	d, err := utils.MarshalProtoV1ToJSON(s)
 	if err != nil {
 		return nil, errtypes.InternalError("failed to marshal ocm share")
 	}
-	var cloned ocm.Share
+	var cloned share.OCMShareWithSecret
 	if err := utils.UnmarshalJSONToProtoV1(d, &cloned); err != nil {
 		return nil, errtypes.InternalError("failed to unmarshal ocm share")
 	}
@@ -277,12 +277,12 @@ func cloneReceivedShare(s *ocm.ReceivedShare) (*ocm.ReceivedShare, error) {
 	return &cloned, nil
 }
 
-func (m *mgr) GetShare(ctx context.Context, user *userpb.User, ref *ocm.ShareReference) (*ocm.Share, error) {
+func (m *mgr) GetShare(ctx context.Context, user *userpb.User, ref *ocm.ShareReference) (*share.OCMShareWithSecret, error) {
 	m.Lock()
 	defer m.Unlock()
 
 	var (
-		s   *ocm.Share
+		s   *share.OCMShareWithSecret
 		err error
 	)
 
@@ -313,7 +313,7 @@ func (m *mgr) GetShare(ctx context.Context, user *userpb.User, ref *ocm.ShareRef
 	return nil, share.ErrShareNotFound
 }
 
-func (m *mgr) getByToken(ctx context.Context, token string) (*ocm.Share, error) {
+func (m *mgr) getByToken(ctx context.Context, token string) (*share.OCMShareWithSecret, error) {
 	for _, share := range m.model.Shares {
 		if share.Token == token {
 			return share, nil
@@ -322,14 +322,14 @@ func (m *mgr) getByToken(ctx context.Context, token string) (*ocm.Share, error) 
 	return nil, errtypes.NotFound(token)
 }
 
-func (m *mgr) getByID(ctx context.Context, id *ocm.ShareId) (*ocm.Share, error) {
+func (m *mgr) getByID(ctx context.Context, id *ocm.ShareId) (*share.OCMShareWithSecret, error) {
 	if share, ok := m.model.Shares[id.OpaqueId]; ok {
 		return share, nil
 	}
 	return nil, errtypes.NotFound(id.String())
 }
 
-func (m *mgr) getByKey(ctx context.Context, key *ocm.ShareKey) (*ocm.Share, error) {
+func (m *mgr) getByKey(ctx context.Context, key *ocm.ShareKey) (*share.OCMShareWithSecret, error) {
 	for _, share := range m.model.Shares {
 		if (utils.UserEqual(key.Owner, share.Owner) || utils.UserEqual(key.Owner, share.Creator)) &&
 			utils.ResourceIDEqual(key.ResourceId, share.ResourceId) && utils.GranteeEqual(key.Grantee, share.Grantee) {
@@ -348,7 +348,7 @@ func (m *mgr) DeleteShare(ctx context.Context, user *userpb.User, ref *ocm.Share
 	}
 
 	for id, share := range m.model.Shares {
-		if sharesEqual(ref, share) {
+		if sharesEqual(ref, &share.Share) {
 			if utils.UserEqual(user.Id, share.Owner) || utils.UserEqual(user.Id, share.Creator) {
 				delete(m.model.Shares, id)
 				return m.save()
@@ -399,14 +399,14 @@ func (m *mgr) ListShares(ctx context.Context, user *userpb.User, filters []*ocm.
 		if utils.UserEqual(user.Id, share.Owner) || utils.UserEqual(user.Id, share.Creator) {
 			// no filter we return earlier
 			if len(filters) == 0 {
-				ss = append(ss, share)
+				ss = append(ss, &share.Share)
 			} else {
 				// check filters
 				// TODO(labkode): add the rest of filters.
 				for _, f := range filters {
 					if f.Type == ocm.ListOCMSharesRequest_Filter_TYPE_RESOURCE_ID {
 						if utils.ResourceIDEqual(share.ResourceId, f.GetResourceId()) {
-							ss = append(ss, share)
+							ss = append(ss, &share.Share)
 						}
 					}
 				}

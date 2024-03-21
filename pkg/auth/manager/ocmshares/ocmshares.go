@@ -82,11 +82,13 @@ func (m *manager) Configure(ml map[string]interface{}) error {
 	return nil
 }
 
-func (m *manager) Authenticate(ctx context.Context, token, _ string) (*userpb.User, map[string]*authpb.Scope, error) {
+func (m *manager) Authenticate(ctx context.Context, token, secret string) (*userpb.User, map[string]*authpb.Scope, error) {
 	log := appctx.GetLogger(ctx).With().Str("token", token).Logger()
 	shareRes, err := m.gw.GetOCMShareByToken(ctx, &ocm.GetOCMShareByTokenRequest{
 		Token: token,
 	})
+
+	// FIXME secret must match!
 
 	switch {
 	case err != nil:

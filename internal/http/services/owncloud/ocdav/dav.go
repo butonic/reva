@@ -186,19 +186,26 @@ func (h *DavHandler) Handler(s *svc) http.Handler {
 
 			// OC10 and Nextcloud (OCM 1.0) are using basic auth for carrying the
 			// shared token.
-			var token string
+			var token, secret string
+			token, _ = router.ShiftPath(r.URL.Path)
+
 			username, _, ok := r.BasicAuth()
 			if ok {
 				// OCM 1.0
-				token = username
+				secret = username
 				r.URL.Path = filepath.Join("/", token, r.URL.Path)
-				ctx = context.WithValue(ctx, net.CtxOCM10, true)
+				ctx = context.WithValue(ctx, net.CtxOCM10, true) // FIXME CtxOCM10 seems unused?
 			} else {
-				token, _ = router.ShiftPath(r.URL.Path)
+				// use bearer auth as shared secret
+				hdr := r.Header.Get("Authorization")
+				token := strings.TrimPrefix(hdr, "Bearer ")
+				if token != "" {
+					secret = token
+				}
 				ctx = context.WithValue(ctx, net.CtxOCM10, false)
 			}
 
-			authRes, err := handleOCMAuth(ctx, c, token)
+			authRes, err := handleOCMAuth(ctx, c, token, secret)
 			switch {
 			case err != nil:
 				log.Error().Err(err).Msg("error during ocm authentication")
@@ -375,9 +382,10 @@ func handleSignatureAuth(ctx context.Context, selector pool.Selectable[gatewayv1
 	return c.Authenticate(ctx, &authenticateRequest)
 }
 
-func handleOCMAuth(ctx context.Context, c gatewayv1beta1.GatewayAPIClient, token string) (*gatewayv1beta1.AuthenticateResponse, error) {
+func handleOCMAuth(ctx context.Context, c gatewayv1beta1.GatewayAPIClient, token, secret string) (*gatewayv1beta1.AuthenticateResponse, error) {
 	return c.Authenticate(ctx, &gatewayv1beta1.AuthenticateRequest{
-		Type:     "ocmshares",
-		ClientId: token,
+		Type:         "ocmshares",
+		ClientId:     token,
+		ClientSecret: secret,
 	})
 }

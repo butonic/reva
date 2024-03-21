@@ -177,7 +177,7 @@ func (s *service) webdavURL(ctx context.Context, share *ocm.Share) string {
 	return p
 }
 
-func (s *service) getWebdavProtocol(ctx context.Context, share *ocm.Share, m *ocm.AccessMethod_WebdavOptions) *ocmd.WebDAV {
+func (s *service) getWebdavProtocol(ctx context.Context, share *share.OCMShareWithSecret, m *ocm.AccessMethod_WebdavOptions) *ocmd.WebDAV {
 	var perms []string
 	if m.WebdavOptions.Permissions.InitiateFileDownload {
 		perms = append(perms, "read")
@@ -188,8 +188,8 @@ func (s *service) getWebdavProtocol(ctx context.Context, share *ocm.Share, m *oc
 
 	return &ocmd.WebDAV{
 		Permissions:  perms,
-		URL:          s.webdavURL(ctx, share),
-		SharedSecret: share.Token,
+		URL:          s.webdavURL(ctx, &share.Share),
+		SharedSecret: share.SharedSecret,
 	}
 }
 
@@ -235,7 +235,7 @@ func (s *service) getDataTransferProtocol(ctx context.Context, share *ocm.Share)
 	}
 }
 
-func (s *service) getProtocols(ctx context.Context, share *ocm.Share) ocmd.Protocols {
+func (s *service) getProtocols(ctx context.Context, share *share.OCMShareWithSecret) ocmd.Protocols {
 	var p ocmd.Protocols
 	for _, m := range share.AccessMethods {
 		var newProtocol ocmd.Protocol
@@ -243,9 +243,9 @@ func (s *service) getProtocols(ctx context.Context, share *ocm.Share) ocmd.Proto
 		case *ocm.AccessMethod_WebdavOptions:
 			newProtocol = s.getWebdavProtocol(ctx, share, t)
 		case *ocm.AccessMethod_WebappOptions:
-			newProtocol = s.getWebappProtocol(share)
+			newProtocol = s.getWebappProtocol(&share.Share)
 		case *ocm.AccessMethod_TransferOptions:
-			newProtocol = s.getDataTransferProtocol(ctx, share)
+			newProtocol = s.getDataTransferProtocol(ctx, &share.Share)
 		}
 		if newProtocol != nil {
 			p = append(p, newProtocol)
@@ -288,18 +288,21 @@ func (s *service) CreateOCMShare(ctx context.Context, req *ocm.CreateOCMShareReq
 		Nanos:   uint32(now % 1000000000),
 	}
 
-	ocmshare := &ocm.Share{
-		Token:         tkn,
-		Name:          filepath.Base(info.Path),
-		ResourceId:    req.ResourceId,
-		Grantee:       req.Grantee,
-		ShareType:     ocm.ShareType_SHARE_TYPE_USER,
-		Owner:         info.Owner,
-		Creator:       user.Id,
-		Ctime:         ts,
-		Mtime:         ts,
-		Expiration:    req.Expiration,
-		AccessMethods: req.AccessMethods,
+	ocmshare := &share.OCMShareWithSecret{
+		Share: ocm.Share{
+			Token:         tkn,
+			Name:          filepath.Base(info.Path),
+			ResourceId:    req.ResourceId,
+			Grantee:       req.Grantee,
+			ShareType:     ocm.ShareType_SHARE_TYPE_USER,
+			Owner:         info.Owner,
+			Creator:       user.Id,
+			Ctime:         ts,
+			Mtime:         ts,
+			Expiration:    req.Expiration,
+			AccessMethods: req.AccessMethods,
+		},
+		SharedSecret: utils.RandString(32),
 	}
 
 	ocmshare, err = s.repo.StoreShare(ctx, ocmshare)
@@ -363,7 +366,7 @@ func (s *service) CreateOCMShare(ctx context.Context, req *ocm.CreateOCMShareReq
 
 	res := &ocm.CreateOCMShareResponse{
 		Status:               status.NewOK(ctx),
-		Share:                ocmshare,
+		Share:                &ocmshare.Share,
 		RecipientDisplayName: newShareRes.RecipientDisplayName,
 	}
 	return res, nil
@@ -409,7 +412,7 @@ func (s *service) GetOCMShare(ctx context.Context, req *ocm.GetOCMShareRequest) 
 
 	return &ocm.GetOCMShareResponse{
 		Status: status.NewOK(ctx),
-		Share:  ocmshare,
+		Share:  &ocmshare.Share,
 	}, nil
 }
 
@@ -432,7 +435,7 @@ func (s *service) GetOCMShareByToken(ctx context.Context, req *ocm.GetOCMShareBy
 
 	return &ocm.GetOCMShareByTokenResponse{
 		Status: status.NewOK(ctx),
-		Share:  ocmshare,
+		Share:  &ocmshare.Share,
 	}, nil
 }
 

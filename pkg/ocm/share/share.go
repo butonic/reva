@@ -28,13 +28,18 @@ import (
 	"google.golang.org/genproto/protobuf/field_mask"
 )
 
+type OCMShareWithSecret struct {
+	ocm.Share
+	SharedSecret string
+}
+
 // Repository is the interface that manipulates the OCM shares repository.
 type Repository interface {
 	// StoreShare stores a share.
-	StoreShare(ctx context.Context, share *ocm.Share) (*ocm.Share, error)
+	StoreShare(ctx context.Context, share *OCMShareWithSecret) (*OCMShareWithSecret, error)
 
 	// GetShare gets the information for a share by the given ref.
-	GetShare(ctx context.Context, user *userpb.User, ref *ocm.ShareReference) (*ocm.Share, error)
+	GetShare(ctx context.Context, user *userpb.User, ref *ocm.ShareReference) (*OCMShareWithSecret, error)
 
 	// DeleteShare deletes the share pointed by ref.
 	DeleteShare(ctx context.Context, user *userpb.User, ref *ocm.ShareReference) error
